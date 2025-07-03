@@ -113,6 +113,7 @@ def index():
         host = form.get('host', '').strip()
         port = form.get('port', '27015').strip()
         password = form.get('password', '').strip()
+        mapfile = form.get('mapfile', 'mapcycle.txt').strip()
 
         # Handle "say" message if submitted
         say_message = form.get("say_message")
@@ -134,7 +135,7 @@ def index():
         # Save server profile if name + host are provided
         new_name = form.get('new_name', '').strip()
         if new_name and host:
-            servers[new_name] = {'host': host, 'port': port, 'password': password}
+            servers[new_name] = {'host': host, 'port': port, 'password': password, 'mapfile': mapfile}
             save_servers(servers)
 
     return render_template('index.html', servers=servers, output=output)
@@ -160,6 +161,18 @@ def get_players():
     output = decode_resp(raw)
     append_log(output)
     return jsonify(parse_players(output))
+
+# API to load maps from a mapcycle file
+@app.route('/maps', methods=['POST'])
+def get_maps():
+    data = request.get_json(force=True)
+    path = data.get('file', 'mapcycle.txt')
+    try:
+        with open(path, encoding='utf-8') as f:
+            maps = [line.strip() for line in f if line.strip() and not line.startswith(';')]
+        return jsonify(maps)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 # API to send arbitrary command via AJAX
 @app.route('/command', methods=['POST'])

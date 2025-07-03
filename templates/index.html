@@ -44,6 +44,23 @@
                 </div>
             </div>
 
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block mb-1">Mapcycle File</label>
+                    <input type="text" id="mapfile" name="mapfile" value="{{ request.form.mapfile or 'mapcycle.txt' }}" class="w-full p-2 rounded text-black">
+                </div>
+                <div class="pt-6">
+                    <button type="button" onclick="loadMaps()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Load Maps</button>
+                </div>
+                <div>
+                    <select id="mapSelect" class="w-full p-2 rounded text-black"></select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                <button type="button" onclick="changeMap()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Change Map</button>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                 <button name="command" value="status" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Status</button>
                 <button type="button" onclick="startAuto()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Auto Refresh</button>
@@ -92,6 +109,7 @@
             document.getElementById('host').value = data.host || '';
             document.getElementById('port').value = data.port || '27015';
             document.getElementById('password').value = data.password || '';
+            document.getElementById('mapfile').value = data.mapfile || 'mapcycle.txt';
         }
 
         async function fetchPlayers() {
@@ -133,6 +151,35 @@
 
         function banPlayer(id, ip) {
             sendCommand(`addip 0 ${ip};writeip;kick #${id}`);
+        }
+
+        async function loadMaps() {
+            const file = document.getElementById('mapfile').value;
+            const res = await fetch('/maps', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file })
+            });
+            const maps = await res.json();
+            const select = document.getElementById('mapSelect');
+            select.innerHTML = '';
+            if (Array.isArray(maps)) {
+                maps.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    select.appendChild(opt);
+                });
+            } else if (maps.error) {
+                alert('Error: ' + maps.error);
+            }
+        }
+
+        function changeMap() {
+            const map = document.getElementById('mapSelect').value;
+            if (map) {
+                sendCommand(`changelevel ${map}`);
+            }
         }
 
         async function refreshConsole() {
