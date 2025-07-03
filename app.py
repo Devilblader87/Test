@@ -117,6 +117,15 @@ def index():
         mapfile = form.get('mapfile', 'mapcycle.txt').strip()
         selected_server = form.get('server', '').strip()
 
+        # Delete an existing profile if requested
+        if 'delete_profile' in form:
+            if selected_server and selected_server in servers:
+                del servers[selected_server]
+                save_servers(servers)
+                output = f"Deleted profile {selected_server}"
+            selected_server = ""
+            return render_template('index.html', servers=servers, output=output, selected_server=selected_server)
+
         # Handle "say" message if submitted
         say_message = form.get("say_message")
         if say_message:
