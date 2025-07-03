@@ -22,25 +22,27 @@ def send_rcon(addr, port, password, command):
     print(f"Command: {command}")
     print(f"Password: {'*' * len(password)}")
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(1.0)
     payload = b'\xff\xff\xff\xffrcon ' + password.encode() + b' ' + command.encode() + b'\n'
-    
-    try:
-        sock.sendto(payload, (addr, port))
-    except Exception as e:
-        print("Socket send error:", e)
-        return b"Error sending data"
 
     data = b''
-    try:
-        while True:
-            packet, _ = sock.recvfrom(4096)
-            data += packet
-    except socket.timeout:
-        print("Socket timed out waiting for response.")
-    except Exception as e:
-        print("Socket receive error:", e)
+    # Use a context manager so the socket is always closed
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(1.0)
+
+        try:
+            sock.sendto(payload, (addr, port))
+        except Exception as e:
+            print("Socket send error:", e)
+            return b"Error sending data"
+
+        try:
+            while True:
+                packet, _ = sock.recvfrom(4096)
+                data += packet
+        except socket.timeout:
+            print("Socket timed out waiting for response.")
+        except Exception as e:
+            print("Socket receive error:", e)
     
     print(f"Raw response bytes: {data[:100]}...")  # Show first 100 bytes
     return data
