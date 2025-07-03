@@ -104,7 +104,7 @@
             const name = document.getElementById('server').value;
             if (!name) return;
 
-            const res = await fetch('/get_server/' + name);
+            const res = await fetch('/get_server/' + encodeURIComponent(name));
             const data = await res.json();
             document.getElementById('host').value = data.host || '';
             document.getElementById('port').value = data.port || '27015';
