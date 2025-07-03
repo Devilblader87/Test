@@ -11,7 +11,7 @@ def load_servers():
             return json.load(f)
     return {}
 
-# Save new servers to JSON
+# Save the full server profile dictionary to JSON
 def save_servers(servers):
     with open(SERVER_FILE, 'w', encoding='utf-8') as f:
         json.dump(servers, f, indent=2)
