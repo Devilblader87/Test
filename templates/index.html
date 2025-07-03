@@ -10,13 +10,14 @@
         <h1 class="text-3xl font-bold mb-6 text-yellow-400">CS 1.6 RCON Admin Panel</h1>
 
         <form method="POST" class="space-y-4 bg-gray-800 p-6 rounded-lg shadow-lg">
+            {% set cfg = servers.get(selected_server, {}) %}
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label class="block mb-1">Server</label>
                     <select name="server" id="server" onchange="loadServer()" class="w-full p-2 rounded text-black">
                         <option value="">-- Select --</option>
                         {% for name in servers %}
-                            <option value="{{ name }}" {% if name == request.form.server %}selected{% endif %}>{{ name }}</option>
+                            <option value="{{ name }}" {% if name == selected_server %}selected{% endif %}>{{ name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -26,27 +27,46 @@
                 </div>
                 <div>
                     <label class="block mb-1">RCON Password</label>
-                    <input type="password" name="password" id="password" value="{{ request.form.password }}" class="w-full p-2 rounded text-black">
+                    <input type="password" name="password" id="password" value="{{ cfg.get('password', request.form.password) }}" class="w-full p-2 rounded text-black">
                 </div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label class="block mb-1">Host</label>
-                    <input type="text" name="host" id="host" value="{{ request.form.host }}" class="w-full p-2 rounded text-black">
+                    <input type="text" name="host" id="host" value="{{ cfg.get('host', request.form.host) }}" class="w-full p-2 rounded text-black">
                 </div>
                 <div>
                     <label class="block mb-1">Port</label>
-                    <input type="text" name="port" id="port" value="{{ request.form.port or '27015' }}" class="w-full p-2 rounded text-black">
+                    <input type="text" name="port" id="port" value="{{ cfg.get('port', request.form.port or '27015') }}" class="w-full p-2 rounded text-black">
+                </div>
+                <div class="pt-6 flex space-x-2">
+                    <button type="submit" name="save_profile" value="1" class="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded">Save Profile</button>
+                    <button type="submit" name="edit_profile" value="1" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Edit Profile</button>
+                    <button type="submit" name="delete_profile" value="1" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">Delete Profile</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block mb-1">Mapcycle File</label>
+                    <input type="text" id="mapfile" name="mapfile" value="{{ cfg.get('mapfile', request.form.mapfile or 'mapcycle.txt') }}" class="w-full p-2 rounded text-black">
                 </div>
                 <div class="pt-6">
-                    <button type="submit" name="save_profile" value="1" class="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded">Save Profile</button>
+                    <button type="button" onclick="loadMaps()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Load Maps</button>
                 </div>
+                <div>
+                    <select id="mapSelect" class="w-full p-2 rounded text-black"></select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                <button type="button" onclick="changeMap()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Change Map</button>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                 <button name="command" value="status" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Status</button>
-                <button type="button" onclick="autoRefresh()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Auto Refresh</button>
+                <button type="button" onclick="startAuto()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Auto Refresh</button>
                 <button name="command" value="map de_dust2" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded">Map: Dust2</button>
                 <button name="command" value="sv_restart 1" class="bg-purple-500 hover:bg-purple-600 px-4 py-2 rounded">Restart</button>
             </div>
@@ -68,6 +88,18 @@
                 </div>
             {% endif %}
         </form>
+
+        <div class="mt-8">
+            <h2 class="text-xl mb-2">Players</h2>
+            <ul id="playersList" class="list-disc pl-5"></ul>
+            <button type="button" onclick="fetchPlayers()" class="mt-2 bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded">Refresh Players</button>
+        </div>
+
+        <div class="mt-8">
+            <h2 class="text-xl mb-2">Console Log</h2>
+            <pre id="consoleLog" class="bg-black p-4 rounded text-green-400 font-mono whitespace-pre-wrap h-64 overflow-y-auto"></pre>
+            <button type="button" onclick="refreshConsole()" class="mt-2 bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded">Refresh Console</button>
+        </div>
     </div>
 
     <script>
@@ -75,29 +107,96 @@
             const name = document.getElementById('server').value;
             if (!name) return;
 
-            const res = await fetch('/get_server/' + name);
+            const res = await fetch('/get_server/' + encodeURIComponent(name));
             const data = await res.json();
             document.getElementById('host').value = data.host || '';
             document.getElementById('port').value = data.port || '27015';
             document.getElementById('password').value = data.password || '';
+            document.getElementById('mapfile').value = data.mapfile || 'mapcycle.txt';
         }
 
-        function autoRefresh() {
+        async function fetchPlayers() {
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch('/players', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host, port, password })
+            });
+            const players = await res.json();
+            const list = document.getElementById('playersList');
+            list.innerHTML = '';
+            players.forEach(p => {
+                const li = document.createElement('li');
+                li.innerHTML = `${p.name} (id ${p.userid}, ping ${p.ping}) ` +
+                    `<button class="bg-red-600 px-2 rounded mr-2" onclick="kickPlayer('${p.userid}')">Kick</button>` +
+                    `<button class="bg-yellow-600 px-2 rounded" onclick="banPlayer('${p.userid}','${p.ip}')">Ban</button>`;
+                list.appendChild(li);
+            });
+        }
+
+        async function sendCommand(command) {
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const password = document.getElementById('password').value;
+            await fetch('/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host, port, password, command })
+            });
+            refreshConsole();
+        }
+
+        function kickPlayer(id) {
+            sendCommand(`kick #${id}`);
+        }
+
+        function banPlayer(id, ip) {
+            sendCommand(`addip 0 ${ip};writeip;kick #${id}`);
+        }
+
+        async function loadMaps() {
+            const file = document.getElementById('mapfile').value;
+            const res = await fetch('/maps', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file })
+            });
+            const maps = await res.json();
+            const select = document.getElementById('mapSelect');
+            select.innerHTML = '';
+            if (Array.isArray(maps)) {
+                maps.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    select.appendChild(opt);
+                });
+            } else if (maps.error) {
+                alert('Error: ' + maps.error);
+            }
+        }
+
+        function changeMap() {
+            const map = document.getElementById('mapSelect').value;
+            if (map) {
+                sendCommand(`changelevel ${map}`);
+            }
+        }
+
+        async function refreshConsole() {
+            const res = await fetch('/console');
+            const logs = await res.json();
+            document.getElementById('consoleLog').textContent = logs.join('\n');
+        }
+
+        function startAuto() {
+            fetchPlayers();
+            refreshConsole();
             setInterval(() => {
-                const form = document.querySelector('form');
-
-                // Remove any previous auto-added input
-                const existing = document.querySelector('input[name="command"][data-auto="true"]');
-                if (existing) existing.remove();
-
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'command';
-                input.value = 'status';
-                input.setAttribute('data-auto', 'true'); // so we can identify it
-                form.appendChild(input);
-
-                form.submit();
+                fetchPlayers();
+                refreshConsole();
             }, 10000); // every 10 seconds
         }
     </script>

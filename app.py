@@ -1,6 +1,15 @@
 from flask import Flask, render_template, request, jsonify
 import socket, os, json
 
+# simple in-memory console log
+CONSOLE_LOG = []
+
+def append_log(entry: str):
+    """Add a message to the in-memory log keeping the last 50 entries."""
+    CONSOLE_LOG.append(entry)
+    if len(CONSOLE_LOG) > 50:
+        CONSOLE_LOG.pop(0)
+
 app = Flask(__name__)
 SERVER_FILE = 'servers.json'
 
@@ -52,11 +61,51 @@ def decode_resp(resp_bytes):
     print(f"Decoded response:\n{decoded}")
     return decoded or "(no response)"
 
+def parse_players(status_output: str):
+    """Parse `status` command output and extract a list of players."""
+    players = []
+    for raw in status_output.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith('print'):
+            line = line[5:].strip()
+        if not line or line.startswith('map:') or line.startswith('#'):
+            # skip headers and map line
+            continue
+
+        # format: columns separated by tabs with IP at the end
+        if '\t' in line:
+            parts = [p for p in line.split('\t') if p]
+            if len(parts) >= 2:
+                prefix = parts[0].strip()
+                name = parts[-2].strip()
+                ip = parts[-1].strip()
+                fields = prefix.split()
+                if fields and fields[0].isdigit():
+                    userid = fields[0]
+                    ping = fields[2] if len(fields) > 2 else ''
+                    players.append({'userid': userid, 'name': name, 'ping': ping, 'ip': ip})
+                    continue
+
+        # fallback for classic status output (# userid name ...)
+        if line.startswith('#') and '"' in line:
+            parts = line.split('"')
+            if len(parts) >= 3:
+                name = parts[1]
+                fields = line.split()
+                userid = fields[1] if len(fields) > 1 else ''
+                ping = fields[-2] if len(fields) > 1 else ''
+                players.append({'userid': userid, 'name': name, 'ping': ping, 'ip': ''})
+
+    return players
+
 # Main page + form handler
 @app.route('/', methods=['GET', 'POST'])
 def index():
     servers = load_servers()
     output = ""
+    selected_server = ""
 
     if request.method == 'POST':
         form = request.form.to_dict()
@@ -65,18 +114,44 @@ def index():
         host = form.get('host', '').strip()
         port = form.get('port', '27015').strip()
         password = form.get('password', '').strip()
+        mapfile = form.get('mapfile', 'mapcycle.txt').strip()
+        selected_server = form.get('server', '').strip()
+
+        # Delete an existing profile if requested
+        if 'delete_profile' in form:
+            if selected_server and selected_server in servers:
+                del servers[selected_server]
+                save_servers(servers)
+                output = f"Deleted profile {selected_server}"
+            selected_server = ""
+            return render_template('index.html', servers=servers, output=output, selected_server=selected_server)
+
+        # Edit existing profile details
+        if 'edit_profile' in form:
+            if selected_server and selected_server in servers:
+                servers[selected_server] = {
+                    'host': host,
+                    'port': port,
+                    'password': password,
+                    'mapfile': mapfile
+                }
+                save_servers(servers)
+                output = f"Updated profile {selected_server}"
+            return render_template('index.html', servers=servers, output=output, selected_server=selected_server)
 
         # Handle "say" message if submitted
         say_message = form.get("say_message")
         if say_message:
             raw = send_rcon(host, int(port), password, f"say {say_message}")
             output = decode_resp(raw)
+            append_log(output)
         else:
             command = form.get('command', '').strip()
             if host and port and password and command:
                 try:
                     raw = send_rcon(host, int(port), password, command)
                     output = decode_resp(raw)
+                    append_log(output)
                 except Exception as e:
                     output = f"Error: {e}"
                     print("Exception occurred:", e)
@@ -84,15 +159,64 @@ def index():
         # Save server profile if name + host are provided
         new_name = form.get('new_name', '').strip()
         if new_name and host:
-            servers[new_name] = {'host': host, 'port': port, 'password': password}
+            servers[new_name] = {'host': host, 'port': port, 'password': password, 'mapfile': mapfile}
             save_servers(servers)
+            selected_server = new_name
 
-    return render_template('index.html', servers=servers, output=output)
+    else:
+        selected_server = request.args.get('server', '')
+
+    return render_template('index.html', servers=servers, output=output, selected_server=selected_server)
 
 # API to fetch server config
 @app.route('/get_server/<name>')
 def get_server(name):
-    return jsonify(load_servers().get(name, {}))
+    data = load_servers().get(name, {})
+    if data and 'mapfile' not in data:
+        data['mapfile'] = 'mapcycle.txt'
+    return jsonify(data)
+
+# API to fetch console log
+@app.route('/console')
+def get_console():
+    return jsonify(CONSOLE_LOG)
+
+# API to fetch player list using status command
+@app.route('/players', methods=['POST'])
+def get_players():
+    data = request.get_json(force=True)
+    host = data.get('host')
+    port = int(data.get('port', 27015))
+    password = data.get('password', '')
+    raw = send_rcon(host, port, password, 'status')
+    output = decode_resp(raw)
+    append_log(output)
+    return jsonify(parse_players(output))
+
+# API to load maps from a mapcycle file
+@app.route('/maps', methods=['POST'])
+def get_maps():
+    data = request.get_json(force=True)
+    path = data.get('file', 'mapcycle.txt')
+    try:
+        with open(path, encoding='utf-8') as f:
+            maps = [line.strip() for line in f if line.strip() and not line.startswith(';')]
+        return jsonify(maps)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+# API to send arbitrary command via AJAX
+@app.route('/command', methods=['POST'])
+def ajax_command():
+    data = request.get_json(force=True)
+    host = data.get('host')
+    port = int(data.get('port', 27015))
+    password = data.get('password', '')
+    command = data.get('command', '')
+    raw = send_rcon(host, port, password, command)
+    output = decode_resp(raw)
+    append_log(output)
+    return jsonify({'output': output})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
