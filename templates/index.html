@@ -108,9 +108,31 @@
             list.innerHTML = '';
             players.forEach(p => {
                 const li = document.createElement('li');
-                li.textContent = `${p.name} (id ${p.userid}, ping ${p.ping})`;
+                li.innerHTML = `${p.name} (id ${p.userid}, ping ${p.ping}) ` +
+                    `<button class="bg-red-600 px-2 rounded mr-2" onclick="kickPlayer('${p.userid}')">Kick</button>` +
+                    `<button class="bg-yellow-600 px-2 rounded" onclick="banPlayer('${p.userid}','${p.ip}')">Ban</button>`;
                 list.appendChild(li);
             });
+        }
+
+        async function sendCommand(command) {
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const password = document.getElementById('password').value;
+            await fetch('/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host, port, password, command })
+            });
+            refreshConsole();
+        }
+
+        function kickPlayer(id) {
+            sendCommand(`kick #${id}`);
+        }
+
+        function banPlayer(id, ip) {
+            sendCommand(`addip 0 ${ip};writeip;kick #${id}`);
         }
 
         async function refreshConsole() {

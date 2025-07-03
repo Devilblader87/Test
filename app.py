@@ -64,17 +64,40 @@ def decode_resp(resp_bytes):
 def parse_players(status_output: str):
     """Parse `status` command output and extract a list of players."""
     players = []
-    for line in status_output.splitlines():
-        line = line.strip()
+    for raw in status_output.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith('print'):
+            line = line[5:].strip()
+        if not line or line.startswith('map:') or line.startswith('#'):
+            # skip headers and map line
+            continue
+
+        # format: columns separated by tabs with IP at the end
+        if '\t' in line:
+            parts = [p for p in line.split('\t') if p]
+            if len(parts) >= 2:
+                prefix = parts[0].strip()
+                name = parts[-2].strip()
+                ip = parts[-1].strip()
+                fields = prefix.split()
+                if fields and fields[0].isdigit():
+                    userid = fields[0]
+                    ping = fields[2] if len(fields) > 2 else ''
+                    players.append({'userid': userid, 'name': name, 'ping': ping, 'ip': ip})
+                    continue
+
+        # fallback for classic status output (# userid name ...)
         if line.startswith('#') and '"' in line:
-            # typical line: # 1 "name" 1 STEAM_... 0 00:34 20 0 ip
             parts = line.split('"')
             if len(parts) >= 3:
                 name = parts[1]
                 fields = line.split()
-                userid = fields[2] if len(fields) > 2 else ''
+                userid = fields[1] if len(fields) > 1 else ''
                 ping = fields[-2] if len(fields) > 1 else ''
-                players.append({'name': name, 'userid': userid, 'ping': ping})
+                players.append({'userid': userid, 'name': name, 'ping': ping, 'ip': ''})
+
     return players
 
 # Main page + form handler
@@ -137,6 +160,19 @@ def get_players():
     output = decode_resp(raw)
     append_log(output)
     return jsonify(parse_players(output))
+
+# API to send arbitrary command via AJAX
+@app.route('/command', methods=['POST'])
+def ajax_command():
+    data = request.get_json(force=True)
+    host = data.get('host')
+    port = int(data.get('port', 27015))
+    password = data.get('password', '')
+    command = data.get('command', '')
+    raw = send_rcon(host, port, password, command)
+    output = decode_resp(raw)
+    append_log(output)
+    return jsonify({'output': output})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
