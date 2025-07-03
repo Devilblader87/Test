@@ -46,7 +46,7 @@
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                 <button name="command" value="status" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Status</button>
-                <button type="button" onclick="autoRefresh()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Auto Refresh</button>
+                <button type="button" onclick="startAuto()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Auto Refresh</button>
                 <button name="command" value="map de_dust2" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded">Map: Dust2</button>
                 <button name="command" value="sv_restart 1" class="bg-purple-500 hover:bg-purple-600 px-4 py-2 rounded">Restart</button>
             </div>
@@ -68,6 +68,18 @@
                 </div>
             {% endif %}
         </form>
+
+        <div class="mt-8">
+            <h2 class="text-xl mb-2">Players</h2>
+            <ul id="playersList" class="list-disc pl-5"></ul>
+            <button type="button" onclick="fetchPlayers()" class="mt-2 bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded">Refresh Players</button>
+        </div>
+
+        <div class="mt-8">
+            <h2 class="text-xl mb-2">Console Log</h2>
+            <pre id="consoleLog" class="bg-black p-4 rounded text-green-400 font-mono whitespace-pre-wrap h-64 overflow-y-auto"></pre>
+            <button type="button" onclick="refreshConsole()" class="mt-2 bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded">Refresh Console</button>
+        </div>
     </div>
 
     <script>
@@ -82,22 +94,37 @@
             document.getElementById('password').value = data.password || '';
         }
 
-        function autoRefresh() {
+        async function fetchPlayers() {
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch('/players', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host, port, password })
+            });
+            const players = await res.json();
+            const list = document.getElementById('playersList');
+            list.innerHTML = '';
+            players.forEach(p => {
+                const li = document.createElement('li');
+                li.textContent = `${p.name} (id ${p.userid}, ping ${p.ping})`;
+                list.appendChild(li);
+            });
+        }
+
+        async function refreshConsole() {
+            const res = await fetch('/console');
+            const logs = await res.json();
+            document.getElementById('consoleLog').textContent = logs.join('\n');
+        }
+
+        function startAuto() {
+            fetchPlayers();
+            refreshConsole();
             setInterval(() => {
-                const form = document.querySelector('form');
-
-                // Remove any previous auto-added input
-                const existing = document.querySelector('input[name="command"][data-auto="true"]');
-                if (existing) existing.remove();
-
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'command';
-                input.value = 'status';
-                input.setAttribute('data-auto', 'true'); // so we can identify it
-                form.appendChild(input);
-
-                form.submit();
+                fetchPlayers();
+                refreshConsole();
             }, 10000); // every 10 seconds
         }
     </script>

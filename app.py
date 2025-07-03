@@ -1,6 +1,15 @@
 from flask import Flask, render_template, request, jsonify
 import socket, os, json
 
+# simple in-memory console log
+CONSOLE_LOG = []
+
+def append_log(entry: str):
+    """Add a message to the in-memory log keeping the last 50 entries."""
+    CONSOLE_LOG.append(entry)
+    if len(CONSOLE_LOG) > 50:
+        CONSOLE_LOG.pop(0)
+
 app = Flask(__name__)
 SERVER_FILE = 'servers.json'
 
@@ -52,6 +61,22 @@ def decode_resp(resp_bytes):
     print(f"Decoded response:\n{decoded}")
     return decoded or "(no response)"
 
+def parse_players(status_output: str):
+    """Parse `status` command output and extract a list of players."""
+    players = []
+    for line in status_output.splitlines():
+        line = line.strip()
+        if line.startswith('#') and '"' in line:
+            # typical line: # 1 "name" 1 STEAM_... 0 00:34 20 0 ip
+            parts = line.split('"')
+            if len(parts) >= 3:
+                name = parts[1]
+                fields = line.split()
+                userid = fields[2] if len(fields) > 2 else ''
+                ping = fields[-2] if len(fields) > 1 else ''
+                players.append({'name': name, 'userid': userid, 'ping': ping})
+    return players
+
 # Main page + form handler
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -71,12 +96,14 @@ def index():
         if say_message:
             raw = send_rcon(host, int(port), password, f"say {say_message}")
             output = decode_resp(raw)
+            append_log(output)
         else:
             command = form.get('command', '').strip()
             if host and port and password and command:
                 try:
                     raw = send_rcon(host, int(port), password, command)
                     output = decode_resp(raw)
+                    append_log(output)
                 except Exception as e:
                     output = f"Error: {e}"
                     print("Exception occurred:", e)
@@ -93,6 +120,23 @@ def index():
 @app.route('/get_server/<name>')
 def get_server(name):
     return jsonify(load_servers().get(name, {}))
+
+# API to fetch console log
+@app.route('/console')
+def get_console():
+    return jsonify(CONSOLE_LOG)
+
+# API to fetch player list using status command
+@app.route('/players', methods=['POST'])
+def get_players():
+    data = request.get_json(force=True)
+    host = data.get('host')
+    port = int(data.get('port', 27015))
+    password = data.get('password', '')
+    raw = send_rcon(host, port, password, 'status')
+    output = decode_resp(raw)
+    append_log(output)
+    return jsonify(parse_players(output))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
