@@ -44,6 +44,11 @@
                 </div>
             </div>
 
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <button type="button" onclick="renameProfile()" class="bg-yellow-700 hover:bg-yellow-800 px-4 py-2 rounded">Rename Profile</button>
+                <button type="button" onclick="deleteProfile()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">Delete Profile</button>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                 <button name="command" value="status" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Status</button>
                 <button type="button" onclick="autoRefresh()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Auto Refresh</button>
@@ -99,6 +104,45 @@
 
                 form.submit();
             }, 10000); // every 10 seconds
+        }
+
+        async function refreshProfiles() {
+            const res = await fetch('/list_profiles');
+            const names = await res.json();
+            const sel = document.getElementById('server');
+            const current = sel.value;
+            sel.innerHTML = '<option value="">-- Select --</option>';
+            names.forEach(n => {
+                const opt = document.createElement('option');
+                opt.value = n;
+                opt.textContent = n;
+                if (n === current) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        async function deleteProfile() {
+            const name = document.getElementById('server').value;
+            if (!name) return;
+            await fetch('/delete_profile/' + encodeURIComponent(name), {method: 'POST'});
+            await refreshProfiles();
+            document.getElementById('host').value = '';
+            document.getElementById('port').value = '27015';
+            document.getElementById('password').value = '';
+        }
+
+        async function renameProfile() {
+            const oldName = document.getElementById('server').value;
+            const newName = document.querySelector('input[name="new_name"]').value.trim();
+            if (!oldName || !newName) return;
+            await fetch('/rename_profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old: oldName, new: newName })
+            });
+            document.querySelector('input[name="new_name"]').value = '';
+            await refreshProfiles();
+            document.getElementById('server').value = newName;
         }
     </script>
 </body>

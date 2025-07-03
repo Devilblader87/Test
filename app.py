@@ -94,5 +94,32 @@ def index():
 def get_server(name):
     return jsonify(load_servers().get(name, {}))
 
+# List all saved server profile names
+@app.route('/list_profiles')
+def list_profiles():
+    return jsonify(list(load_servers().keys()))
+
+# Delete a server profile
+@app.route('/delete_profile/<name>', methods=['POST'])
+def delete_profile(name):
+    servers = load_servers()
+    if name in servers:
+        servers.pop(name)
+        save_servers(servers)
+    return jsonify({'success': True})
+
+# Rename an existing server profile
+@app.route('/rename_profile', methods=['POST'])
+def rename_profile():
+    data = request.get_json() or request.form
+    old = data.get('old')
+    new = data.get('new')
+    servers = load_servers()
+    if not old or not new or old not in servers:
+        return jsonify({'success': False}), 400
+    servers[new] = servers.pop(old)
+    save_servers(servers)
+    return jsonify({'success': True})
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
