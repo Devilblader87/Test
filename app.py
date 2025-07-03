@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import socket, os, json
+import re
 
 app = Flask(__name__)
 SERVER_FILE = 'servers.json'
@@ -52,6 +53,22 @@ def decode_resp(resp_bytes):
     print(f"Decoded response:\n{decoded}")
     return decoded or "(no response)"
 
+# Parse player list from a status response
+def parse_players(decoded_status):
+    players = []
+    for line in decoded_status.splitlines():
+        line = line.strip()
+        if line.startswith('#') and '"' in line and not line.startswith('# userid'):
+            # Example line: # 1 "Player" 123 STEAM_1:0:1 0 00:02 0 0
+            try:
+                pre, rest = line.split('"', 1)
+                name, _ = rest.split('"', 1)
+                userid = pre.strip('# ').split()[0]
+                players.append({'userid': userid, 'name': name})
+            except ValueError:
+                continue
+    return players
+
 # Main page + form handler
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -93,6 +110,32 @@ def index():
 @app.route('/get_server/<name>')
 def get_server(name):
     return jsonify(load_servers().get(name, {}))
+
+# Return list of players for a server
+@app.route('/players/<name>')
+def get_players(name):
+    cfg = load_servers().get(name)
+    if not cfg:
+        return jsonify({'error': 'Unknown server'}), 404
+    raw = send_rcon(cfg['host'], int(cfg.get('port', 27015)), cfg['password'], 'status')
+    decoded = decode_resp(raw)
+    return jsonify({'players': parse_players(decoded)})
+
+# Kick or ban a player
+@app.route('/player_action/<name>/<action>/<userid>', methods=['POST'])
+def player_action(name, action, userid):
+    cfg = load_servers().get(name)
+    if not cfg:
+        return jsonify({'error': 'Unknown server'}), 404
+    if action == 'kick':
+        cmd = f"kick #{userid}"
+    elif action == 'ban':
+        cmd = f"banid 0 #{userid};kick #{userid}"
+    else:
+        return jsonify({'error': 'Invalid action'}), 400
+    raw = send_rcon(cfg['host'], int(cfg.get('port', 27015)), cfg['password'], cmd)
+    decoded = decode_resp(raw)
+    return jsonify({'result': decoded})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
