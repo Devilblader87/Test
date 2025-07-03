@@ -46,7 +46,7 @@
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                 <button name="command" value="status" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Status</button>
-                <button type="button" onclick="autoRefresh()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Auto Refresh</button>
+                <button type="button" id="toggle-stream" onclick="toggleStream()" class="bg-indigo-500 hover:bg-indigo-600 px-4 py-2 rounded">Start Live Status</button>
                 <button name="command" value="map de_dust2" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded">Map: Dust2</button>
                 <button name="command" value="sv_restart 1" class="bg-purple-500 hover:bg-purple-600 px-4 py-2 rounded">Restart</button>
             </div>
@@ -62,11 +62,13 @@
           </div>
 
 
-            {% if output %}
-                <div class="mt-6 bg-black p-4 rounded text-green-400 font-mono whitespace-pre-wrap">
+            <div id="console" class="mt-6 bg-black p-4 rounded text-green-400 font-mono whitespace-pre-wrap h-64 overflow-y-auto">
+                {% if output %}
                     {{ output }}
-                </div>
-            {% endif %}
+                {% else %}
+                    <span class="text-gray-500">Ready...</span>
+                {% endif %}
+            </div>
         </form>
     </div>
 
@@ -82,24 +84,35 @@
             document.getElementById('password').value = data.password || '';
         }
 
-        function autoRefresh() {
-            setInterval(() => {
-                const form = document.querySelector('form');
+        let source;
+        async function toggleStream() {
+            const btn = document.getElementById('toggle-stream');
+            if (source) {
+                source.close();
+                await fetch('/stop_poll');
+                source = null;
+                btn.textContent = 'Start Live Status';
+                return;
+            }
 
-                // Remove any previous auto-added input
-                const existing = document.querySelector('input[name="command"][data-auto="true"]');
-                if (existing) existing.remove();
-
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'command';
-                input.value = 'status';
-                input.setAttribute('data-auto', 'true'); // so we can identify it
-                form.appendChild(input);
-
-                form.submit();
-            }, 10000); // every 10 seconds
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const password = document.getElementById('password').value;
+            await fetch(`/start_poll?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}&password=${encodeURIComponent(password)}`);
+            source = new EventSource('/stream');
+            source.onmessage = (e) => {
+                const div = document.getElementById('console');
+                const line = document.createElement('div');
+                line.textContent = e.data;
+                div.appendChild(line);
+                div.scrollTop = div.scrollHeight;
+            };
+            source.onerror = () => {
+                btn.click();
+            };
+            btn.textContent = 'Stop Live Status';
         }
     </script>
 </body>
 </html>
+

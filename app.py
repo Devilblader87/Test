@@ -1,8 +1,13 @@
-from flask import Flask, render_template, request, jsonify
-import socket, os, json
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context
+import socket, os, json, queue, threading, time
 
 app = Flask(__name__)
 SERVER_FILE = 'servers.json'
+
+# Globals for live status streaming
+poll_queue: queue.Queue = queue.Queue()
+poll_thread = None
+poll_stop = threading.Event()
 
 # Load saved servers from JSON
 def load_servers():
@@ -44,6 +49,17 @@ def send_rcon(addr, port, password, command):
     
     print(f"Raw response bytes: {data[:100]}...")  # Show first 100 bytes
     return data
+
+# Background polling function for live status
+def poll_server(host: str, port: int, password: str, interval: int = 5):
+    while not poll_stop.is_set():
+        try:
+            raw = send_rcon(host, int(port), password, 'status')
+            out = decode_resp(raw)
+            poll_queue.put(out)
+        except Exception as e:
+            poll_queue.put(f'Error: {e}')
+        time.sleep(interval)
 
 # Decode RCON server response
 def decode_resp(resp_bytes):
@@ -93,6 +109,40 @@ def index():
 @app.route('/get_server/<name>')
 def get_server(name):
     return jsonify(load_servers().get(name, {}))
+
+# Start background polling
+@app.route('/start_poll')
+def start_poll():
+    global poll_thread
+    host = request.args.get('host')
+    port = int(request.args.get('port', '27015'))
+    password = request.args.get('password', '')
+    interval = int(request.args.get('interval', '5'))
+    poll_stop.clear()
+    if poll_thread is None or not poll_thread.is_alive():
+        poll_thread = threading.Thread(target=poll_server, args=(host, port, password, interval), daemon=True)
+        poll_thread.start()
+    return ('', 204)
+
+# Stop background polling
+@app.route('/stop_poll')
+def stop_poll():
+    poll_stop.set()
+    poll_queue.put('')  # unblock queue
+    return ('', 204)
+
+# Stream polled output using Server-Sent Events
+@app.route('/stream')
+def stream():
+    def event_stream():
+        while not poll_stop.is_set():
+            try:
+                line = poll_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+            if line:
+                yield f"data: {line}\n\n"
+    return Response(stream_with_context(event_stream()), mimetype='text/event-stream')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
