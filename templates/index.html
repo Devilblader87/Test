@@ -51,6 +51,19 @@
                 <button name="command" value="sv_restart 1" class="bg-purple-500 hover:bg-purple-600 px-4 py-2 rounded">Restart</button>
             </div>
 
+            {% if presets %}
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+                {% for p in presets %}
+                <div class="flex items-center">
+                    <button name="command" value="{{ p.command }}" class="bg-teal-500 hover:bg-teal-600 px-4 py-2 rounded flex-grow">{{ p.label }}</button>
+                    <form method="POST" action="/remove_preset/{{ loop.index0 }}" class="ml-2">
+                        <button class="bg-red-600 hover:bg-red-700 px-2 py-2 rounded" title="Remove">&times;</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
             <div class="mt-4">
                 <input type="text" name="command" placeholder="Custom command" class="w-full p-2 rounded text-black">
                 <button type="submit" class="mt-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Send Command</button>
@@ -59,6 +72,15 @@
           <div class="mt-4">
               <input type="text" name="say_message" placeholder="Say something on the server" class="w-full p-2 rounded text-black">
               <button type="submit" class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Say</button>
+          </div>
+
+          <div class="mt-4 bg-gray-700 p-4 rounded">
+              <h3 class="font-semibold mb-2">Add Preset</h3>
+              <form method="POST" action="/add_preset" class="flex flex-col md:flex-row gap-2">
+                  <input type="text" name="preset_label" placeholder="Label" class="p-2 rounded text-black md:flex-1">
+                  <input type="text" name="preset_command" placeholder="Command" class="p-2 rounded text-black md:flex-1">
+                  <button type="submit" class="bg-teal-600 hover:bg-teal-700 px-4 py-2 rounded">Add</button>
+              </form>
           </div>
 
 

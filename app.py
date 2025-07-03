@@ -1,8 +1,21 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 import socket, os, json
 
 app = Flask(__name__)
 SERVER_FILE = 'servers.json'
+PRESET_FILE = 'presets.json'
+
+# Load presets from JSON
+def load_presets():
+    if os.path.exists(PRESET_FILE):
+        with open(PRESET_FILE, encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+# Save presets to JSON
+def save_presets(presets):
+    with open(PRESET_FILE, 'w', encoding='utf-8') as f:
+        json.dump(presets, f, indent=2)
 
 # Load saved servers from JSON
 def load_servers():
@@ -57,6 +70,7 @@ def decode_resp(resp_bytes):
 def index():
     servers = load_servers()
     output = ""
+    presets = load_presets()
 
     if request.method == 'POST':
         form = request.form.to_dict()
@@ -87,12 +101,32 @@ def index():
             servers[new_name] = {'host': host, 'port': port, 'password': password}
             save_servers(servers)
 
-    return render_template('index.html', servers=servers, output=output)
+    return render_template('index.html', servers=servers, presets=presets, output=output)
 
 # API to fetch server config
 @app.route('/get_server/<name>')
 def get_server(name):
     return jsonify(load_servers().get(name, {}))
+
+# Add a new preset command
+@app.route('/add_preset', methods=['POST'])
+def add_preset():
+    presets = load_presets()
+    cmd = request.form.get('preset_command', '').strip()
+    label = request.form.get('preset_label', '').strip() or cmd
+    if cmd:
+        presets.append({'command': cmd, 'label': label})
+        save_presets(presets)
+    return redirect(url_for('index'))
+
+# Remove preset by index
+@app.route('/remove_preset/<int:idx>', methods=['POST'])
+def remove_preset(idx):
+    presets = load_presets()
+    if 0 <= idx < len(presets):
+        presets.pop(idx)
+        save_presets(presets)
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
