@@ -105,6 +105,7 @@ def parse_players(status_output: str):
 def index():
     servers = load_servers()
     output = ""
+    selected_server = ""
 
     if request.method == 'POST':
         form = request.form.to_dict()
@@ -114,6 +115,7 @@ def index():
         port = form.get('port', '27015').strip()
         password = form.get('password', '').strip()
         mapfile = form.get('mapfile', 'mapcycle.txt').strip()
+        selected_server = form.get('server', '').strip()
 
         # Handle "say" message if submitted
         say_message = form.get("say_message")
@@ -137,8 +139,12 @@ def index():
         if new_name and host:
             servers[new_name] = {'host': host, 'port': port, 'password': password, 'mapfile': mapfile}
             save_servers(servers)
+            selected_server = new_name
 
-    return render_template('index.html', servers=servers, output=output)
+    else:
+        selected_server = request.args.get('server', '')
+
+    return render_template('index.html', servers=servers, output=output, selected_server=selected_server)
 
 # API to fetch server config
 @app.route('/get_server/<name>')
