@@ -143,7 +143,10 @@ def index():
 # API to fetch server config
 @app.route('/get_server/<name>')
 def get_server(name):
-    return jsonify(load_servers().get(name, {}))
+    data = load_servers().get(name, {})
+    if data and 'mapfile' not in data:
+        data['mapfile'] = 'mapcycle.txt'
+    return jsonify(data)
 
 # API to fetch console log
 @app.route('/console')
