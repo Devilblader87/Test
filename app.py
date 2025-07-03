@@ -126,6 +126,19 @@ def index():
             selected_server = ""
             return render_template('index.html', servers=servers, output=output, selected_server=selected_server)
 
+        # Edit existing profile details
+        if 'edit_profile' in form:
+            if selected_server and selected_server in servers:
+                servers[selected_server] = {
+                    'host': host,
+                    'port': port,
+                    'password': password,
+                    'mapfile': mapfile
+                }
+                save_servers(servers)
+                output = f"Updated profile {selected_server}"
+            return render_template('index.html', servers=servers, output=output, selected_server=selected_server)
+
         # Handle "say" message if submitted
         say_message = form.get("say_message")
         if say_message:
