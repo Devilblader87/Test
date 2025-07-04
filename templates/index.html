@@ -10,6 +10,7 @@
         <h1 class="text-3xl font-bold mb-6 text-yellow-400">CS 1.6 RCON Admin Panel</h1>
 
         <form method="POST" class="space-y-4 bg-gray-800 p-6 rounded-lg shadow-lg">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {% set cfg = servers.get(selected_server, {}) %}
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -103,6 +104,15 @@
     </div>
 
     <script>
+        const csrfToken = "{{ csrf_token() }}";
+        function showToast(msg, err=false) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.remove('hidden');
+            t.classList.toggle('bg-red-600', err);
+            t.classList.toggle('bg-green-600', !err);
+            setTimeout(() => t.classList.add('hidden'), 3000);
+        }
           async function loadServer() {
               const name = document.getElementById('server').value;
               if (!name) return;
@@ -122,7 +132,7 @@
               const password = document.getElementById('password').value;
               const res = await fetch('/players', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({ host, port, password })
             });
             const players = await res.json();
@@ -144,7 +154,7 @@
               if (!host) return;
               const res = await fetch('/server_status', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                   body: JSON.stringify({ host, port, password })
               });
               const data = await res.json();
@@ -157,10 +167,11 @@
             const password = document.getElementById('password').value;
             await fetch('/command', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({ host, port, password, command })
             });
             refreshConsole();
+            showToast('Command sent');
         }
 
         function kickPlayer(id) {
@@ -175,7 +186,7 @@
             const file = document.getElementById('mapfile').value;
             const res = await fetch('/maps', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({ file })
             });
             const maps = await res.json();
@@ -189,7 +200,7 @@
                     select.appendChild(opt);
                 });
             } else if (maps.error) {
-                alert('Error: ' + maps.error);
+                showToast('Error: ' + maps.error, true);
             }
         }
 
@@ -219,5 +230,6 @@
 
         document.addEventListener('DOMContentLoaded', checkStatus);
     </script>
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded hidden"></div>
 </body>
 </html>

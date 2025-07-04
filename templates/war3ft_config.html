@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>War3FT Config</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-6">
+    <h1 class="text-2xl mb-4">War3FT Config</h1>
+    <div class="mb-4 space-x-2">
+        <input id="host" placeholder="Host" class="text-black p-1 rounded" />
+        <input id="port" value="27015" placeholder="Port" class="text-black p-1 rounded" />
+        <input id="password" type="password" placeholder="RCON Password" class="text-black p-1 rounded" />
+        <button onclick="reloadPlugin()" class="bg-purple-600 px-3 py-1 rounded">Reload Plugin</button>
+    </div>
+    <form id="cfgForm" class="space-y-4"></form>
+    <button onclick="saveCfg()" class="mt-4 bg-green-600 px-4 py-2 rounded">Save</button>
+
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded hidden"></div>
+
+    <script>
+        const csrfToken = "{{ csrf_token() }}";
+        const sections = ['Saving Options','Gameplay','Skills','Items','Disables'];
+        async function loadCfg(){
+            const res = await fetch('/war3ft/config?json=1');
+            const data = await res.json();
+            const form = document.getElementById('cfgForm');
+            form.innerHTML='';
+            sections.forEach(sec=>{
+                const group=document.createElement('div');
+                group.innerHTML=`<h2 class='text-xl mb-2'>${sec}</h2>`;
+                const opts=data[sec]||{};
+                for(const k in opts){
+                    const div=document.createElement('div');
+                    div.className='mb-2';
+                    div.innerHTML=`<label class='mr-2'>${k}</label><input data-key='${k}' value='${opts[k]}' class='text-black p-1 rounded'/>`;
+                    group.appendChild(div);
+                }
+                form.appendChild(group);
+            });
+        }
+        async function saveCfg(){
+            const updates={};
+            document.querySelectorAll('#cfgForm input[data-key]').forEach(i=>{updates[i.dataset.key]=i.value});
+            const res=await fetch('/war3ft/config',{
+                method:'POST',
+                headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken},
+                body:JSON.stringify(updates)
+            });
+            const out=await res.json();
+            if(out.success) showToast('Saved');
+            else showToast(out.error,true);
+        }
+        async function reloadPlugin(){
+            const host=document.getElementById('host').value;
+            const port=document.getElementById('port').value;
+            const password=document.getElementById('password').value;
+            const res=await fetch('/war3ft/reload',{
+                method:'POST',
+                headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken},
+                body:JSON.stringify({host,port,password})
+            });
+            const out=await res.json();
+            if(out.output) showToast('Reloaded');
+        }
+        function showToast(msg,err=false){
+            const t=document.getElementById('toast');
+            t.textContent=msg;
+            t.classList.remove('hidden');
+            t.classList.toggle('bg-red-600',err);
+            t.classList.toggle('bg-green-600',!err);
+            setTimeout(()=>t.classList.add('hidden'),3000);
+        }
+        document.addEventListener('DOMContentLoaded',loadCfg);
+    </script>
+</body>
+</html>
