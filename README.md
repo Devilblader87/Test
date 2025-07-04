@@ -13,6 +13,8 @@ This project is a small Flask application for administrating a Counter-Strike 1.
    the CSRF token works.
    Submitting forms or AJAX requests without the CSRF token will result in a
    **400 Bad Request** error.
+6. This uses the Flask development server. For production deployments, run the
+   app with a WSGI server like **gunicorn**.
 
 ### Usage
 - Fill in the server host, port and RCON password.
