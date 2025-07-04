@@ -17,20 +17,12 @@
             const data=await res.json();
             const form=document.getElementById('cfgForm');
             form.innerHTML='';
- j2bzqd-codex/add-war3ft-config-editor-and-plugin-manager
-            Object.entries(data).forEach(([k,v])=>{
-                const div=document.createElement('div');
-                div.innerHTML=`<label class='mr-2'>${k}</label><input data-key='${k}' value='${v}' class='text-black p-1 rounded'/>`;
-                form.appendChild(div);
-            });
-=======
             for(const k in data.other||data){
                 const div=document.createElement('div');
                 const val=data.other?data.other[k]:data[k];
                 div.innerHTML=`<label class='mr-2'>${k}</label><input data-key='${k}' value='${val}' class='text-black p-1 rounded'/>`;
                 form.appendChild(div);
             }
- Chatgptcodex2
         }
         async function saveCfg(){
             const updates={};

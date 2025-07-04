@@ -7,7 +7,11 @@
 </head>
 <body class="bg-gray-900 text-white">
     <div class="max-w-4xl mx-auto p-6">
-        <h1 class="text-3xl font-bold mb-6 text-yellow-400">CS 1.6 RCON Admin Panel</h1>
+        <h1 class="text-3xl font-bold mb-4 text-yellow-400">CS 1.6 RCON Admin Panel</h1>
+        <div class="mb-6 space-x-2">
+            <a href="/war3ft/config" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">War3FT Config</a>
+            <a href="/amxx/plugins" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">AMXX Plugins</a>
+        </div>
 
         <form method="POST" class="space-y-4 bg-gray-800 p-6 rounded-lg shadow-lg">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
