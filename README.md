@@ -9,10 +9,8 @@ This project is a small Flask application for administrating a Counter-Strike 1.
 2. Run `pip install flask` to install the dependency.
 3. (Optional) set `SECRET_KEY` environment variable for session protection.
 4. Start the app with `python3 app.py`.
-5. Open `http://localhost:5000` in your browser. Ensure cookies are enabled so
-   the CSRF token works.
-   Submitting forms or AJAX requests without the CSRF token will result in a
-   **400 Bad Request** error.
+5. Open `http://localhost:5000` in your browser. CSRF protection is disabled so
+   the app works even if cookies are turned off.
 6. This uses the Flask development server. For production deployments, run the
    app with a WSGI server like **gunicorn**.
 
