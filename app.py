@@ -126,12 +126,16 @@ def parse_config(path, sections=None):
     if sections is None:
         sections = []
     data = {s: {} for s in sections}
+ j2bzqd-codex/add-war3ft-config-editor-and-plugin-manager
     other = {}
+=======
+ Chatgptcodex2
     current = None
     try:
         with open(path, encoding='utf-8') as f:
             for line in f:
                 stripped = line.strip()
+ j2bzqd-codex/add-war3ft-config-editor-and-plugin-manager
                 if not stripped or stripped.startswith((';', '//')):
                     current = None
                     continue
@@ -154,6 +158,19 @@ def parse_config(path, sections=None):
         pass
     if sections and other:
         data['other'] = other
+=======
+                for sec in sections:
+                    if sec.lower() in stripped.lower():
+                        current = sec
+                if not stripped or stripped.startswith((';', '//')):
+                    continue
+                if ' ' in stripped:
+                    key, val = stripped.split(None, 1)
+                    if current:
+                        data.setdefault(current, {})[key] = val
+    except FileNotFoundError:
+        pass
+ Chatgptcodex2
     return data
 
 def update_config(path, updates):
