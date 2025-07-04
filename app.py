@@ -133,6 +133,7 @@ def parse_config(path, sections=None):
             for line in f:
                 stripped = line.strip()
                 if not stripped or stripped.startswith((';', '//')):
+                    current = None
                     continue
                 sec_hit = False
                 for sec in sections:
