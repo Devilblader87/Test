@@ -1,5 +1,10 @@
-from flask import Flask, render_template, request, jsonify, abort, session
-import socket, os, json
+from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for
+import socket, os, json, sqlite3, time
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_principal import Principal, Permission, RoleNeed, Identity, identity_loaded, identity_changed, AnonymousIdentity
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # simple in-memory console log
 CONSOLE_LOG = []
@@ -12,6 +17,48 @@ def append_log(entry: str):
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'change-me')
+
+# --- Authentication setup ---
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+principals = Principal(app)
+scheduler = BackgroundScheduler()
+scheduler.start()
+
+# simple sqlite DB for logs
+DB_FILE = 'app.db'
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('CREATE TABLE IF NOT EXISTS command_log (ts REAL, user TEXT, command TEXT)')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+class User(UserMixin):
+    def __init__(self, username, role):
+        self.id = username
+        self.role = role
+
+@login_manager.user_loader
+def load_user(user_id):
+    users = load_users()
+    info = users.get(user_id)
+    if info:
+        return User(user_id, info.get('role', 'read'))
+    return None
+
+def role_required(role):
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*a, **kw):
+            if not current_user.is_authenticated or current_user.role != role:
+                abort(403)
+            return f(*a, **kw)
+        return wrapped
+    return decorator
 
 # CSRF helpers
 def generate_csrf_token():
@@ -28,6 +75,7 @@ def csrf_protect():
 
 app.jinja_env.globals['csrf_token'] = generate_csrf_token
 SERVER_FILE = 'servers.json'
+USERS_FILE = 'users.json'
 
 # Load saved servers from JSON
 def load_servers():
@@ -40,6 +88,17 @@ def load_servers():
 def save_servers(servers):
     with open(SERVER_FILE, 'w', encoding='utf-8') as f:
         json.dump(servers, f, indent=2)
+
+# Load and save users from JSON
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def save_users(users):
+    with open(USERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(users, f, indent=2)
 
 # Send RCON command
 def send_rcon(addr, port, password, command):
@@ -174,6 +233,7 @@ def update_config(path, updates):
 
 # Main page + form handler
 @app.route('/', methods=['GET', 'POST'])
+@login_required
 def index():
     servers = load_servers()
     output = ""
@@ -250,11 +310,13 @@ def get_server(name):
 
 # API to fetch console log
 @app.route('/console')
+@login_required
 def get_console():
     return jsonify(CONSOLE_LOG)
 
 # Lightweight server status check
 @app.route('/server_status', methods=['POST'])
+@login_required
 def server_status():
     data = request.get_json(force=True)
     host = data.get('host')
@@ -270,6 +332,7 @@ def server_status():
 
 # API to fetch player list using status command
 @app.route('/players', methods=['POST'])
+@login_required
 def get_players():
     data = request.get_json(force=True)
     host = data.get('host')
@@ -282,6 +345,7 @@ def get_players():
 
 # API to load maps from a mapcycle file
 @app.route('/maps', methods=['POST'])
+@login_required
 def get_maps():
     data = request.get_json(force=True)
     path = data.get('file', 'mapcycle.txt')
@@ -294,6 +358,7 @@ def get_maps():
 
 # API to send arbitrary command via AJAX
 @app.route('/command', methods=['POST'])
+@login_required
 def ajax_command():
     data = request.get_json(force=True)
     host = data.get('host')
@@ -303,6 +368,10 @@ def ajax_command():
     raw = send_rcon(host, port, password, command)
     output = decode_resp(raw)
     append_log(output)
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute('INSERT INTO command_log VALUES (?,?,?)', (time.time(), current_user.id, command))
+    conn.commit()
+    conn.close()
     return jsonify({'output': output})
 
 # ----------------- War3FT config -----------------
@@ -310,6 +379,7 @@ WAR3FT_CFG = 'addons/amxmodx/configs/war3ft/war3FT.cfg'
 WAR3FT_SECTIONS = ['Saving Options', 'Gameplay', 'Skills', 'Items', 'Disables']
 
 @app.route('/war3ft/config', methods=['GET', 'POST'])
+@login_required
 def war3ft_config():
     if request.method == 'POST':
         data = request.get_json(force=True)
@@ -325,6 +395,8 @@ def war3ft_config():
     return render_template('war3ft_config.html', servers=servers)
 
 @app.route('/war3ft/reload', methods=['POST'])
+@login_required
+@role_required('admin')
 def war3ft_reload():
     data = request.get_json(force=True)
     host = data.get('host')
@@ -338,6 +410,7 @@ def war3ft_reload():
 # ----------------- AMXX plugin manager -----------------
 
 @app.route('/amxx/plugins', methods=['GET'])
+@login_required
 def amxx_plugins():
     if request.accept_mimetypes.best == 'application/json' or request.args.get('json'):
         host = request.args.get('host')
@@ -358,6 +431,8 @@ def amxx_plugins():
     return render_template('amxx_plugins.html', servers=servers)
 
 @app.route('/amxx/plugins/<int:pid>/<action>', methods=['POST'])
+@login_required
+@role_required('admin')
 def toggle_plugin(pid, action):
     data = request.get_json(force=True)
     host = data.get('host')
@@ -375,6 +450,8 @@ def toggle_plugin(pid, action):
 # ----------------- Generic AMXX config editor -----------------
 
 @app.route('/amxx/configs/<plugin>', methods=['GET', 'POST'])
+@login_required
+@role_required('admin')
 def plugin_config(plugin):
     cfg_path = f'addons/amxmodx/configs/{plugin}/{plugin}.cfg'
     if request.method == 'POST':
@@ -388,6 +465,146 @@ def plugin_config(plugin):
     if request.accept_mimetypes.best == 'application/json' or request.args.get('json'):
         return jsonify(parse_config(cfg_path))
     return render_template('plugin_config.html', plugin=plugin)
+
+# ----------------- Authentication & user management -----------------
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        users = load_users()
+        info = users.get(username)
+        if info and check_password_hash(info['password'], password):
+            login_user(User(username, info.get('role', 'read')))
+            identity_changed.send(app, identity=Identity(username))
+            return redirect(url_for('index'))
+        return render_template('login.html', error='Invalid credentials')
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role', 'read')
+        users = load_users()
+        if username in users:
+            return render_template('register.html', error='User exists')
+        users[username] = {
+            'password': generate_password_hash(password),
+            'role': role
+        }
+        save_users(users)
+        return redirect(url_for('login'))
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    logout_user()
+    identity_changed.send(app, identity=AnonymousIdentity())
+    return redirect(url_for('login'))
+
+@app.route('/users', methods=['GET', 'POST'])
+@login_required
+@role_required('admin')
+def manage_users():
+    users = load_users()
+    if request.method == 'POST':
+        uname = request.form.get('username')
+        pwd = request.form.get('password')
+        role = request.form.get('role', 'read')
+        if uname:
+            info = users.get(uname, {})
+            if pwd:
+                info['password'] = generate_password_hash(pwd)
+            info['role'] = role
+            users[uname] = info
+            save_users(users)
+    users_list = [(u, info.get('role', 'read')) for u, info in users.items()]
+    return render_template('users.html', users=users_list)
+
+@app.route('/roles')
+@login_required
+def roles():
+    return jsonify(['admin','moderator','read'])
+
+# ----------------- Dashboard -----------------
+
+WIDGETS = {}
+ENABLED_WIDGETS = set()
+
+def register_widget(name, func):
+    WIDGETS[name] = func
+
+def sample_widget():
+    return '<div class="p-2">Sample Widget</div>'
+
+register_widget('sample', sample_widget)
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    servers = load_servers()
+    return render_template('dashboard.html', servers=servers, widgets=[WIDGETS[n]() for n in ENABLED_WIDGETS])
+
+@app.route('/widgets', methods=['GET', 'POST'])
+@login_required
+@role_required('admin')
+def widgets():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        state = request.form.get('state')
+        if name in WIDGETS:
+            if state == 'on':
+                ENABLED_WIDGETS.add(name)
+            else:
+                ENABLED_WIDGETS.discard(name)
+    return render_template('widgets.html', widgets=WIDGETS, enabled=ENABLED_WIDGETS)
+
+# ----------------- File editor -----------------
+
+@app.route('/files/edit/<path:fp>', methods=['GET', 'POST'])
+@login_required
+@role_required('admin')
+def edit_file(fp):
+    if request.method == 'POST':
+        content = request.form.get('content','')
+        try:
+            with open(fp,'w',encoding='utf-8') as f:
+                f.write(content)
+            return jsonify({'saved': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+    try:
+        with open(fp,encoding='utf-8') as f:
+            text = f.read()
+    except FileNotFoundError:
+        abort(404)
+    return render_template('edit_file.html', path=fp, text=text)
+
+# ----------------- Task scheduler -----------------
+
+@app.route('/tasks', methods=['GET', 'POST'])
+@login_required
+@role_required('admin')
+def tasks():
+    if request.method == 'POST':
+        host = request.form.get('host')
+        port = int(request.form.get('port','27015'))
+        password = request.form.get('password')
+        command = request.form.get('command')
+        run_at = float(request.form.get('run_at',0))
+    scheduler.add_job(lambda: send_rcon(host, port, password, command), 'date', run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at)))
+    return render_template('tasks.html')
+
+@app.route('/stats')
+@login_required
+def stats():
+    conn = sqlite3.connect(DB_FILE)
+    rows = conn.execute('SELECT user, COUNT(*) FROM command_log GROUP BY user').fetchall()
+    conn.close()
+    return render_template('stats.html', rows=rows)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tasks</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-6">
+<a href="/" class="bg-gray-700 px-2 py-1 rounded">&larr; Back</a>
+<h1 class="text-2xl mb-4">Schedule Task</h1>
+<form method="POST" class="space-y-2">
+<input name="host" placeholder="Host" class="text-black p-1 rounded" required>
+<input name="port" value="27015" class="text-black p-1 rounded" required>
+<input name="password" placeholder="Password" class="text-black p-1 rounded" required>
+<input name="command" placeholder="Command" class="text-black p-1 rounded" required>
+<input name="run_at" type="number" placeholder="Unix Timestamp" class="text-black p-1 rounded" required>
+<button class="bg-green-600 px-4 py-1 rounded">Add</button>
+</form>
+</body>
+</html>
