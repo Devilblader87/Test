@@ -11,6 +11,8 @@ This project is a small Flask application for administrating a Counter-Strike 1.
 4. Start the app with `python3 app.py`.
 5. Open `http://localhost:5000` in your browser. Ensure cookies are enabled so
    the CSRF token works.
+   Submitting forms or AJAX requests without the CSRF token will result in a
+   **400 Bad Request** error.
 
 ### Usage
 - Fill in the server host, port and RCON password.
