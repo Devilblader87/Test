@@ -6,6 +6,15 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-900 text-white p-6">
+    <div class="mb-4 space-x-2">
+        <a href="/" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">&larr; Back</a>
+        <select id="server" onchange="loadServer()" class="text-black p-1 rounded">
+            <option value="">-- Server --</option>
+            {% for name in servers %}
+                <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+        </select>
+    </div>
     <h1 class="text-2xl mb-4">War3FT Config</h1>
     <div class="mb-4 space-x-2">
         <input id="host" placeholder="Host" class="text-black p-1 rounded" />
@@ -62,6 +71,15 @@
             });
             const out=await res.json();
             if(out.output) showToast('Reloaded');
+        }
+        async function loadServer(){
+            const name=document.getElementById('server').value;
+            if(!name) return;
+            const res=await fetch('/get_server/'+encodeURIComponent(name));
+            const data=await res.json();
+            document.getElementById('host').value=data.host||'';
+            document.getElementById('port').value=data.port||'27015';
+            document.getElementById('password').value=data.password||'';
         }
         function showToast(msg,err=false){
             const t=document.getElementById('toast');
