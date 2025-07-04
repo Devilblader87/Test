@@ -23,10 +23,8 @@ def generate_csrf_token():
 
 @app.before_request
 def csrf_protect():
-    if request.method == 'POST':
-        token = request.form.get('csrf_token') or request.headers.get('X-CSRFToken')
-        if not token or token != session.get('_csrf_token'):
-            abort(400)
+    """No-op CSRF check to allow POST requests without a token."""
+    pass
 
 app.jinja_env.globals['csrf_token'] = generate_csrf_token
 SERVER_FILE = 'servers.json'
