@@ -13,7 +13,7 @@
             {% set cfg = servers.get(selected_server, {}) %}
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                    <label class="block mb-1">Server</label>
+                    <label class="block mb-1">Server <span id="serverStatus" class="ml-2">☆</span></label>
                     <select name="server" id="server" onchange="loadServer()" class="w-full p-2 rounded text-black">
                         <option value="">-- Select --</option>
                         {% for name in servers %}
@@ -103,23 +103,24 @@
     </div>
 
     <script>
-        async function loadServer() {
-            const name = document.getElementById('server').value;
-            if (!name) return;
+          async function loadServer() {
+              const name = document.getElementById('server').value;
+              if (!name) return;
 
-            const res = await fetch('/get_server/' + encodeURIComponent(name));
-            const data = await res.json();
-            document.getElementById('host').value = data.host || '';
-            document.getElementById('port').value = data.port || '27015';
-            document.getElementById('password').value = data.password || '';
-            document.getElementById('mapfile').value = data.mapfile || 'mapcycle.txt';
-        }
+              const res = await fetch('/get_server/' + encodeURIComponent(name));
+              const data = await res.json();
+              document.getElementById('host').value = data.host || '';
+              document.getElementById('port').value = data.port || '27015';
+              document.getElementById('password').value = data.password || '';
+              document.getElementById('mapfile').value = data.mapfile || 'mapcycle.txt';
+              checkStatus();
+          }
 
-        async function fetchPlayers() {
-            const host = document.getElementById('host').value;
-            const port = document.getElementById('port').value;
-            const password = document.getElementById('password').value;
-            const res = await fetch('/players', {
+          async function fetchPlayers() {
+              const host = document.getElementById('host').value;
+              const port = document.getElementById('port').value;
+              const password = document.getElementById('password').value;
+              const res = await fetch('/players', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ host, port, password })
@@ -127,14 +128,28 @@
             const players = await res.json();
             const list = document.getElementById('playersList');
             list.innerHTML = '';
-            players.forEach(p => {
-                const li = document.createElement('li');
-                li.innerHTML = `${p.name} (id ${p.userid}, ping ${p.ping}) ` +
-                    `<button class="bg-red-600 px-2 rounded mr-2" onclick="kickPlayer('${p.userid}')">Kick</button>` +
-                    `<button class="bg-yellow-600 px-2 rounded" onclick="banPlayer('${p.userid}','${p.ip}')">Ban</button>`;
-                list.appendChild(li);
-            });
-        }
+              players.forEach(p => {
+                  const li = document.createElement('li');
+                  li.innerHTML = `${p.name} (id ${p.userid}, ping ${p.ping}) ` +
+                      `<button class="bg-red-600 px-2 rounded mr-2" onclick="kickPlayer('${p.userid}')">Kick</button>` +
+                      `<button class="bg-yellow-600 px-2 rounded" onclick="banPlayer('${p.userid}','${p.ip}')">Ban</button>`;
+                  list.appendChild(li);
+              });
+          }
+
+          async function checkStatus() {
+              const host = document.getElementById('host').value;
+              const port = document.getElementById('port').value;
+              const password = document.getElementById('password').value;
+              if (!host) return;
+              const res = await fetch('/server_status', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ host, port, password })
+              });
+              const data = await res.json();
+              document.getElementById('serverStatus').textContent = data.online ? '⭐' : '☆';
+          }
 
         async function sendCommand(command) {
             const host = document.getElementById('host').value;
@@ -194,11 +209,15 @@
         function startAuto() {
             fetchPlayers();
             refreshConsole();
+            checkStatus();
             setInterval(() => {
                 fetchPlayers();
                 refreshConsole();
+                checkStatus();
             }, 10000); // every 10 seconds
         }
+
+        document.addEventListener('DOMContentLoaded', checkStatus);
     </script>
 </body>
 </html>

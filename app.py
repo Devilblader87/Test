@@ -34,7 +34,7 @@ def send_rcon(addr, port, password, command):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(1.0)
     payload = b'\xff\xff\xff\xffrcon ' + password.encode() + b' ' + command.encode() + b'\n'
-    
+
     try:
         sock.sendto(payload, (addr, port))
     except Exception as e:
@@ -50,7 +50,9 @@ def send_rcon(addr, port, password, command):
         print("Socket timed out waiting for response.")
     except Exception as e:
         print("Socket receive error:", e)
-    
+    finally:
+        sock.close()
+
     print(f"Raw response bytes: {data[:100]}...")  # Show first 100 bytes
     return data
 
@@ -180,6 +182,21 @@ def get_server(name):
 @app.route('/console')
 def get_console():
     return jsonify(CONSOLE_LOG)
+
+# Lightweight server status check
+@app.route('/server_status', methods=['POST'])
+def server_status():
+    data = request.get_json(force=True)
+    host = data.get('host')
+    port = int(data.get('port', 27015))
+    password = data.get('password', '')
+    try:
+        raw = send_rcon(host, port, password, 'status')
+        online = bool(raw)
+    except Exception as e:
+        print('Status check error:', e)
+        online = False
+    return jsonify({'online': online})
 
 # API to fetch player list using status command
 @app.route('/players', methods=['POST'])
