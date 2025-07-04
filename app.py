@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for
 import socket, os, json, sqlite3, time
+from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_principal import Principal, Permission, RoleNeed, Identity, identity_loaded, identity_changed, AnonymousIdentity
@@ -24,16 +25,13 @@ principals = Principal(app)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# simple sqlite DB for users and logs
+# simple sqlite DB for logs
 DB_FILE = 'app.db'
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS command_log (ts REAL, user TEXT, command TEXT)')
-    if not c.execute('SELECT * FROM users').fetchone():
-        c.execute('INSERT INTO users VALUES (?,?,?)', ('admin','admin','admin'))
     conn.commit()
     conn.close()
 
@@ -46,12 +44,10 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    row = c.execute('SELECT username, role FROM users WHERE username=?', (user_id,)).fetchone()
-    conn.close()
-    if row:
-        return User(row[0], row[1])
+    users = load_users()
+    info = users.get(user_id)
+    if info:
+        return User(user_id, info.get('role', 'read'))
     return None
 
 def role_required(role):
@@ -79,6 +75,7 @@ def csrf_protect():
 
 app.jinja_env.globals['csrf_token'] = generate_csrf_token
 SERVER_FILE = 'servers.json'
+USERS_FILE = 'users.json'
 
 # Load saved servers from JSON
 def load_servers():
@@ -91,6 +88,17 @@ def load_servers():
 def save_servers(servers):
     with open(SERVER_FILE, 'w', encoding='utf-8') as f:
         json.dump(servers, f, indent=2)
+
+# Load and save users from JSON
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+def save_users(users):
+    with open(USERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(users, f, indent=2)
 
 # Send RCON command
 def send_rcon(addr, port, password, command):
@@ -465,16 +473,31 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        row = c.execute('SELECT username, role FROM users WHERE username=? AND password=?', (username, password)).fetchone()
-        conn.close()
-        if row:
-            login_user(User(row[0], row[1]))
-            identity_changed.send(app, identity=Identity(row[0]))
+        users = load_users()
+        info = users.get(username)
+        if info and check_password_hash(info['password'], password):
+            login_user(User(username, info.get('role', 'read')))
+            identity_changed.send(app, identity=Identity(username))
             return redirect(url_for('index'))
         return render_template('login.html', error='Invalid credentials')
     return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role', 'read')
+        users = load_users()
+        if username in users:
+            return render_template('register.html', error='User exists')
+        users[username] = {
+            'password': generate_password_hash(password),
+            'role': role
+        }
+        save_users(users)
+        return redirect(url_for('login'))
+    return render_template('register.html')
 
 @app.route('/logout')
 def logout():
@@ -486,18 +509,20 @@ def logout():
 @login_required
 @role_required('admin')
 def manage_users():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    users = load_users()
     if request.method == 'POST':
         uname = request.form.get('username')
         pwd = request.form.get('password')
-        role = request.form.get('role','read')
-        if uname and pwd:
-            c.execute('REPLACE INTO users VALUES (?,?,?)', (uname, pwd, role))
-            conn.commit()
-    users = c.execute('SELECT username, role FROM users').fetchall()
-    conn.close()
-    return render_template('users.html', users=users)
+        role = request.form.get('role', 'read')
+        if uname:
+            info = users.get(uname, {})
+            if pwd:
+                info['password'] = generate_password_hash(pwd)
+            info['role'] = role
+            users[uname] = info
+            save_users(users)
+    users_list = [(u, info.get('role', 'read')) for u, info in users.items()]
+    return render_template('users.html', users=users_list)
 
 @app.route('/roles')
 @login_required
