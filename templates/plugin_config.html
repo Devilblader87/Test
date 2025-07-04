@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ plugin }} Config</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-6">
+    <h1 class="text-2xl mb-4">{{ plugin }} Config</h1>
+    <form id="cfgForm" class="space-y-2"></form>
+    <button onclick="saveCfg()" class="mt-4 bg-green-600 px-4 py-2 rounded">Save</button>
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded hidden"></div>
+    <script>
+        const csrfToken="{{ csrf_token() }}";
+        async function loadCfg(){
+            const res=await fetch(`/amxx/configs/{{ plugin }}?json=1`);
+            const data=await res.json();
+            const form=document.getElementById('cfgForm');
+            form.innerHTML='';
+            for(const k in data.other||data){
+                const div=document.createElement('div');
+                const val=data.other?data.other[k]:data[k];
+                div.innerHTML=`<label class='mr-2'>${k}</label><input data-key='${k}' value='${val}' class='text-black p-1 rounded'/>`;
+                form.appendChild(div);
+            }
+        }
+        async function saveCfg(){
+            const updates={};
+            document.querySelectorAll('#cfgForm input[data-key]').forEach(i=>updates[i.dataset.key]=i.value);
+            const res=await fetch(`/amxx/configs/{{ plugin }}`,{
+                method:'POST',
+                headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken},
+                body:JSON.stringify(updates)
+            });
+            const out=await res.json();
+            if(out.success) showToast('Saved');
+            else showToast(out.error,true);
+        }
+        function showToast(msg,err=false){
+            const t=document.getElementById('toast');
+            t.textContent=msg;
+            t.classList.remove('hidden');
+            t.classList.toggle('bg-red-600',err);
+            t.classList.toggle('bg-green-600',!err);
+            setTimeout(()=>t.classList.add('hidden'),3000);
+        }
+        document.addEventListener('DOMContentLoaded',loadCfg);
+    </script>
+</body>
+</html>

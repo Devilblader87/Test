@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AMXX Plugins</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-6">
+    <h1 class="text-2xl mb-4">AMXX Plugins</h1>
+    <div class="mb-4 space-x-2">
+        <input id="host" placeholder="Host" class="text-black p-1 rounded" />
+        <input id="port" value="27015" placeholder="Port" class="text-black p-1 rounded" />
+        <input id="password" type="password" placeholder="RCON Password" class="text-black p-1 rounded" />
+        <button onclick="loadList()" class="bg-blue-600 px-3 py-1 rounded">Load</button>
+    </div>
+    <table class="min-w-full text-left" id="tbl"></table>
+
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded hidden"></div>
+    <script>
+        const csrfToken="{{ csrf_token() }}";
+        async function loadList(){
+            const host=document.getElementById('host').value;
+            const port=document.getElementById('port').value;
+            const password=document.getElementById('password').value;
+            const res=await fetch(`/amxx/plugins?json=1&host=${host}&port=${port}&password=${password}`);
+            const data=await res.json();
+            const tbl=document.getElementById('tbl');
+            tbl.innerHTML='<tr><th>ID</th><th>Name</th><th>State</th><th></th></tr>';
+            data.forEach(p=>{
+                const tr=document.createElement('tr');
+                const btnTxt=p.enabled?'Disable':'Enable';
+                tr.innerHTML=`<td>${p.id}</td><td>${p.name}</td><td>${p.enabled?'on':'off'}</td>`+
+                    `<td><button class='bg-gray-700 px-2 rounded' onclick="toggle(${p.id},${p.enabled})">${btnTxt}</button></td>`;
+                tbl.appendChild(tr);
+            });
+        }
+        async function toggle(id,on){
+            const host=document.getElementById('host').value;
+            const port=document.getElementById('port').value;
+            const password=document.getElementById('password').value;
+            const action=on?'disable':'enable';
+            const res=await fetch(`/amxx/plugins/${id}/${action}`,{
+                method:'POST',
+                headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken},
+                body:JSON.stringify({host,port,password})
+            });
+            const out=await res.json();
+            showToast('Done');
+            loadList();
+        }
+        function showToast(msg,err=false){
+            const t=document.getElementById('toast');
+            t.textContent=msg;
+            t.classList.remove('hidden');
+            t.classList.toggle('bg-red-600',err);
+            t.classList.toggle('bg-green-600',!err);
+            setTimeout(()=>t.classList.add('hidden'),3000);
+        }
+    </script>
+</body>
+</html>

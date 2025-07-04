@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, abort, session
 import socket, os, json
 
 # simple in-memory console log
@@ -11,6 +11,24 @@ def append_log(entry: str):
         CONSOLE_LOG.pop(0)
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'change-me')
+
+# CSRF helpers
+def generate_csrf_token():
+    token = session.get('_csrf_token')
+    if not token:
+        token = os.urandom(16).hex()
+        session['_csrf_token'] = token
+    return token
+
+@app.before_request
+def csrf_protect():
+    if request.method == 'POST':
+        token = request.form.get('csrf_token') or request.headers.get('X-CSRFToken')
+        if not token or token != session.get('_csrf_token'):
+            abort(400)
+
+app.jinja_env.globals['csrf_token'] = generate_csrf_token
 SERVER_FILE = 'servers.json'
 
 # Load saved servers from JSON
@@ -101,6 +119,48 @@ def parse_players(status_output: str):
                 players.append({'userid': userid, 'name': name, 'ping': ping, 'ip': ''})
 
     return players
+
+# --- Config file helpers ---
+def parse_config(path, sections=None):
+    """Parse a simple key/value cfg file grouped by provided section names."""
+    if sections is None:
+        sections = []
+    data = {s: {} for s in sections}
+    current = None
+    try:
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                stripped = line.strip()
+                for sec in sections:
+                    if sec.lower() in stripped.lower():
+                        current = sec
+                if not stripped or stripped.startswith((';', '//')):
+                    continue
+                if ' ' in stripped:
+                    key, val = stripped.split(None, 1)
+                    if current:
+                        data.setdefault(current, {})[key] = val
+    except FileNotFoundError:
+        pass
+    return data
+
+def update_config(path, updates):
+    """Update key/value pairs in a cfg file preserving original lines."""
+    if not os.path.exists(path):
+        return
+    with open(path, encoding='utf-8') as f:
+        lines = f.readlines()
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith((';', '//')) and ' ' in stripped:
+            key = stripped.split(None, 1)[0]
+            if key in updates:
+                prefix = line[: line.index(key)] if key in line else ''
+                line = f"{prefix}{key} {updates[key]}\n"
+        new_lines.append(line)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.writelines(new_lines)
 
 # Main page + form handler
 @app.route('/', methods=['GET', 'POST'])
@@ -234,6 +294,88 @@ def ajax_command():
     output = decode_resp(raw)
     append_log(output)
     return jsonify({'output': output})
+
+# ----------------- War3FT config -----------------
+WAR3FT_CFG = 'addons/amxmodx/configs/war3ft/war3FT.cfg'
+WAR3FT_SECTIONS = ['Saving Options', 'Gameplay', 'Skills', 'Items', 'Disables']
+
+@app.route('/war3ft/config', methods=['GET', 'POST'])
+def war3ft_config():
+    if request.method == 'POST':
+        data = request.get_json(force=True)
+        try:
+            update_config(WAR3FT_CFG, data)
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+    if request.accept_mimetypes.best == 'application/json' or request.args.get('json'):
+        return jsonify(parse_config(WAR3FT_CFG, WAR3FT_SECTIONS))
+    return render_template('war3ft_config.html')
+
+@app.route('/war3ft/reload', methods=['POST'])
+def war3ft_reload():
+    data = request.get_json(force=True)
+    host = data.get('host')
+    port = int(data.get('port', 27015))
+    password = data.get('password', '')
+    raw = send_rcon(host, port, password, 'amx_reload war3ft.amxx')
+    output = decode_resp(raw)
+    append_log(output)
+    return jsonify({'output': output})
+
+# ----------------- AMXX plugin manager -----------------
+
+@app.route('/amxx/plugins', methods=['GET'])
+def amxx_plugins():
+    if request.accept_mimetypes.best == 'application/json' or request.args.get('json'):
+        host = request.args.get('host')
+        port = int(request.args.get('port', 27015))
+        password = request.args.get('password', '')
+        raw = send_rcon(host, port, password, 'amx_plugins list')
+        output = decode_resp(raw)
+        plugins = []
+        for line in output.splitlines():
+            parts = line.split()
+            if parts and parts[0].isdigit():
+                pid = int(parts[0])
+                name = parts[1]
+                enabled = 'running' in line or 'loaded' in line
+                plugins.append({'id': pid, 'name': name, 'enabled': enabled})
+        return jsonify(plugins)
+    return render_template('amxx_plugins.html')
+
+@app.route('/amxx/plugins/<int:pid>/<action>', methods=['POST'])
+def toggle_plugin(pid, action):
+    data = request.get_json(force=True)
+    host = data.get('host')
+    port = int(data.get('port', 27015))
+    password = data.get('password', '')
+    if action == 'enable':
+        cmd = f'amx_plugins load {pid}'
+    else:
+        cmd = f'amx_plugins unload {pid}'
+    raw = send_rcon(host, port, password, cmd)
+    output = decode_resp(raw)
+    append_log(output)
+    return jsonify({'output': output})
+
+# ----------------- Generic AMXX config editor -----------------
+
+@app.route('/amxx/configs/<plugin>', methods=['GET', 'POST'])
+def plugin_config(plugin):
+    cfg_path = f'addons/amxmodx/configs/{plugin}/{plugin}.cfg'
+    if request.method == 'POST':
+        data = request.get_json(force=True)
+        try:
+            update_config(cfg_path, data)
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+
+    if request.accept_mimetypes.best == 'application/json' or request.args.get('json'):
+        return jsonify(parse_config(cfg_path))
+    return render_template('plugin_config.html', plugin=plugin)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
