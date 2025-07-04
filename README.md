@@ -52,3 +52,6 @@ Alle Server-Profile werden in der Datei `servers.json` im gleichen Verzeichnis a
 - War3FT-Konfiguration unter `/war3ft/config` bearbeiten
 - Plugin-Hotreload über `/war3ft/reload`
 - AMXX-Plugins und Konfigs unter `/amxx/...` verwalten
+
+## Neue Features
+- Serverprofile-Auswahl und Zurück-Link auf `/war3ft/config` und `/amxx/plugins`

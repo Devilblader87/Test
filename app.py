@@ -321,7 +321,8 @@ def war3ft_config():
 
     if request.accept_mimetypes.best == 'application/json' or request.args.get('json'):
         return jsonify(parse_config(WAR3FT_CFG, WAR3FT_SECTIONS))
-    return render_template('war3ft_config.html')
+    servers = load_servers()
+    return render_template('war3ft_config.html', servers=servers)
 
 @app.route('/war3ft/reload', methods=['POST'])
 def war3ft_reload():
@@ -353,7 +354,8 @@ def amxx_plugins():
                 enabled = 'running' in line or 'loaded' in line
                 plugins.append({'id': pid, 'name': name, 'enabled': enabled})
         return jsonify(plugins)
-    return render_template('amxx_plugins.html')
+    servers = load_servers()
+    return render_template('amxx_plugins.html', servers=servers)
 
 @app.route('/amxx/plugins/<int:pid>/<action>', methods=['POST'])
 def toggle_plugin(pid, action):
