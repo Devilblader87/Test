@@ -9,8 +9,12 @@
     <div class="max-w-4xl mx-auto p-6">
         <h1 class="text-3xl font-bold mb-4 text-yellow-400">CS 1.6 RCON Admin Panel</h1>
         <div class="mb-6 space-x-2">
+            <a href="/dashboard" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">Dashboard</a>
+            <a href="/users" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">Users</a>
+            <a href="/stats" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">Stats</a>
             <a href="/war3ft/config" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">War3FT Config</a>
             <a href="/amxx/plugins" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">AMXX Plugins</a>
+            <a href="/logout" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded">Logout</a>
         </div>
 
         <form method="POST" class="space-y-4 bg-gray-800 p-6 rounded-lg shadow-lg">
@@ -77,7 +81,12 @@
             </div>
 
             <div class="mt-4">
-                <input type="text" name="command" placeholder="Custom command" class="w-full p-2 rounded text-black">
+                <input list="cmds" type="text" name="command" placeholder="Custom command" class="w-full p-2 rounded text-black">
+                <datalist id="cmds">
+                    <option value="status">
+                    <option value="changelevel">
+                    <option value="sv_restart 1">
+                </datalist>
                 <button type="submit" class="mt-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded">Send Command</button>
             </div>
 

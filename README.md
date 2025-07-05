@@ -55,3 +55,11 @@ Alle Server-Profile werden in der Datei `servers.json` im gleichen Verzeichnis a
 
 ## Neue Features
 - Serverprofile-Auswahl und Zurück-Link auf `/war3ft/config` und `/amxx/plugins`
+- Login unter `/login` und Benutzerverwaltung unter `/users`
+- Rollenliste auf `/roles`
+- Dashboard mit Widgets auf `/dashboard`
+- Widget-Konfiguration via `/widgets`
+- Datei-Editor auf `/files/edit/<path>`
+- Aufgabenplanung auf `/tasks`
+- Statistikseite unter `/stats`
+- Registrierung unter `/register`
