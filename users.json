@@ -1,6 +1,0 @@
-{
-  "admin": {
-    "password": "pbkdf2:sha256:260000$gopwL6I4sng$eff385427472bfd8d2585240e88fe6514cdee11244e319457edd9c6877796390",
-    "role": "admin"
-  }
-}

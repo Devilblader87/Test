@@ -25,13 +25,20 @@ principals = Principal(app)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# simple sqlite DB for logs
+# SQLite database for logs and users
 DB_FILE = 'app.db'
 
 def init_db():
+    """Create required tables and default admin user."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS command_log (ts REAL, user TEXT, command TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT)')
+    # ensure default admin account
+    c.execute('SELECT 1 FROM users WHERE username=?', ('admin',))
+    if c.fetchone() is None:
+        c.execute('INSERT INTO users VALUES (?, ?, ?)', (
+            'admin', generate_password_hash('admin'), 'admin'))
     conn.commit()
     conn.close()
 
@@ -44,10 +51,13 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    users = load_users()
-    info = users.get(user_id)
-    if info:
-        return User(user_id, info.get('role', 'read'))
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT role FROM users WHERE username=?', (user_id,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return User(user_id, row[0])
     return None
 
 def role_required(role):
@@ -75,7 +85,6 @@ def csrf_protect():
 
 app.jinja_env.globals['csrf_token'] = generate_csrf_token
 SERVER_FILE = 'servers.json'
-USERS_FILE = 'users.json'
 
 # Load saved servers from JSON
 def load_servers():
@@ -89,16 +98,29 @@ def save_servers(servers):
     with open(SERVER_FILE, 'w', encoding='utf-8') as f:
         json.dump(servers, f, indent=2)
 
-# Load and save users from JSON
+# User helpers backed by SQLite
 def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT username, password, role FROM users')
+    users = {row[0]: {'password': row[1], 'role': row[2]} for row in c.fetchall()}
+    conn.close()
+    return users
 
-def save_users(users):
-    with open(USERS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(users, f, indent=2)
+def save_user(username, password_hash, role):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('INSERT OR REPLACE INTO users VALUES (?,?,?)', (username, password_hash, role))
+    conn.commit()
+    conn.close()
+
+def user_exists(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM users WHERE username=?', (username,))
+    exists = c.fetchone() is not None
+    conn.close()
+    return exists
 
 # Send RCON command
 def send_rcon(addr, port, password, command):
@@ -473,10 +495,13 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        users = load_users()
-        info = users.get(username)
-        if info and check_password_hash(info['password'], password):
-            login_user(User(username, info.get('role', 'read')))
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute('SELECT password, role FROM users WHERE username=?', (username,))
+        row = c.fetchone()
+        conn.close()
+        if row and check_password_hash(row[0], password):
+            login_user(User(username, row[1]))
             identity_changed.send(app, identity=Identity(username))
             return redirect(url_for('index'))
         return render_template('login.html', error='Invalid credentials')
@@ -488,14 +513,9 @@ def register():
         username = request.form.get('username')
         password = request.form.get('password')
         role = request.form.get('role', 'read')
-        users = load_users()
-        if username in users:
+        if user_exists(username):
             return render_template('register.html', error='User exists')
-        users[username] = {
-            'password': generate_password_hash(password),
-            'role': role
-        }
-        save_users(users)
+        save_user(username, generate_password_hash(password), role)
         return redirect(url_for('login'))
     return render_template('register.html')
 
@@ -515,12 +535,9 @@ def manage_users():
         pwd = request.form.get('password')
         role = request.form.get('role', 'read')
         if uname:
-            info = users.get(uname, {})
-            if pwd:
-                info['password'] = generate_password_hash(pwd)
-            info['role'] = role
-            users[uname] = info
-            save_users(users)
+            pwd_hash = generate_password_hash(pwd) if pwd else users.get(uname, {}).get('password')
+            save_user(uname, pwd_hash, role)
+            users = load_users()
     users_list = [(u, info.get('role', 'read')) for u, info in users.items()]
     return render_template('users.html', users=users_list)
 
