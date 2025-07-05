@@ -410,6 +410,28 @@ def ajax_command():
     conn.close()
     return jsonify({'output': output})
 
+# Simple API for direct RCON commands
+@app.route('/api/rcon', methods=['POST'])
+@login_required
+def api_rcon():
+    data = request.get_json(force=True)
+    cmd = data.get('command', '')
+    host = data.get('host') or os.environ.get('RCON_HOST')
+    port = int(data.get('port', os.environ.get('RCON_PORT', 27015)))
+    password = data.get('password') or os.environ.get('RCON_PASSWORD', '')
+    if not cmd:
+        return jsonify({'success': False, 'error': 'No command'}), 400
+    if not host or not password:
+        return jsonify({'success': False, 'error': 'Missing connection info'}), 400
+    raw = send_rcon(host, port, password, cmd)
+    output = decode_resp(raw)
+    append_log(output)
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute('INSERT INTO command_log VALUES (?,?,?)', (time.time(), current_user.id, cmd))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'response': output})
+
 # ----------------- War3FT config -----------------
 WAR3FT_CFG = 'addons/amxmodx/configs/war3ft/war3FT.cfg'
 WAR3FT_SECTIONS = ['Saving Options', 'Gameplay', 'Skills', 'Items', 'Disables']
