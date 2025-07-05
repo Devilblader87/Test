@@ -22,7 +22,73 @@
         <input id="password" type="password" placeholder="RCON Password" class="text-black p-1 rounded" />
         <button onclick="loadList()" class="bg-blue-600 px-3 py-1 rounded">Load</button>
     </div>
-    <table class="min-w-full text-left" id="tbl"></table>
+    <table class="min-w-full text-left mb-8" id="tbl"></table>
+
+    <h2 class="text-xl mb-2">Admin Commands</h2>
+    <div class="space-y-2 mb-4" id="cmds">
+        <div>
+            <input id="kick_user" placeholder="Name or #userid" class="text-black p-1 rounded" />
+            <input id="kick_reason" placeholder="Reason (optional)" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_kick','kick_user','kick_reason')" class="bg-gray-700 px-3 py-1 rounded">Kick</button>
+        </div>
+        <div>
+            <input id="ban_user" placeholder="Name/IP" class="text-black p-1 rounded" />
+            <input id="ban_time" placeholder="Minutes" class="text-black p-1 rounded" />
+            <input id="ban_reason" placeholder="Reason" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_ban','ban_user','ban_time','ban_reason')" class="bg-gray-700 px-3 py-1 rounded">Ban</button>
+        </div>
+        <div>
+            <input id="addban_id" placeholder="AuthID/IP" class="text-black p-1 rounded" />
+            <input id="addban_time" placeholder="Minutes" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_addban','addban_id','addban_time')" class="bg-gray-700 px-3 py-1 rounded">Addban</button>
+        </div>
+        <div>
+            <input id="unban_id" placeholder="AuthID/IP" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_unban','unban_id')" class="bg-gray-700 px-3 py-1 rounded">Unban</button>
+        </div>
+        <div>
+            <input id="slay_user" placeholder="Name or #userid" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_slay','slay_user')" class="bg-gray-700 px-3 py-1 rounded">Slay</button>
+        </div>
+        <div>
+            <input id="slap_user" placeholder="Name or #userid" class="text-black p-1 rounded" />
+            <input id="slap_dmg" placeholder="Damage" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_slap','slap_user','slap_dmg')" class="bg-gray-700 px-3 py-1 rounded">Slap</button>
+        </div>
+        <div>
+            <input id="leave_user" placeholder="Name or #userid" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_leave','leave_user')" class="bg-gray-700 px-3 py-1 rounded">Leave</button>
+        </div>
+        <div>
+            <input id="pause_name" placeholder="Plugin name" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_pause','pause_name')" class="bg-gray-700 px-3 py-1 rounded">Pause</button>
+        </div>
+        <div>
+            <button onclick="runCmd('amx_who')" class="bg-gray-700 px-3 py-1 rounded">Who</button>
+        </div>
+        <div>
+            <input id="cvar_name" placeholder="Cvar" class="text-black p-1 rounded" />
+            <input id="cvar_value" placeholder="Value" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_cvar','cvar_name','cvar_value')" class="bg-gray-700 px-3 py-1 rounded">Cvar</button>
+        </div>
+        <div>
+            <input id="map_name" placeholder="Map" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_map','map_name')" class="bg-gray-700 px-3 py-1 rounded">Map</button>
+        </div>
+        <div>
+            <input id="cfg_file" placeholder="cfg filename" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_cfg','cfg_file')" class="bg-gray-700 px-3 py-1 rounded">Cfg</button>
+        </div>
+        <div>
+            <input id="rcon_cmd" placeholder="command" class="text-black p-1 rounded" />
+            <button onclick="runCmd('amx_rcon','rcon_cmd')" class="bg-gray-700 px-3 py-1 rounded">Rcon</button>
+        </div>
+        <div>
+            <button onclick="runCmd('amx_plugins')" class="bg-gray-700 px-3 py-1 rounded">amx_plugins</button>
+            <button onclick="runCmd('amx_modules')" class="bg-gray-700 px-3 py-1 rounded">amx_modules</button>
+        </div>
+    </div>
+    <pre id="resp" class="whitespace-pre-wrap"></pre>
 
     <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded hidden"></div>
     <script>
@@ -56,6 +122,24 @@
             const out=await res.json();
             showToast('Done');
             loadList();
+        }
+        async function runCmd(base,...ids){
+            const host=document.getElementById('host').value;
+            const port=document.getElementById('port').value;
+            const password=document.getElementById('password').value;
+            const parts=[base];
+            ids.forEach(id=>{
+                const el=document.getElementById(id);
+                if(el&&el.value) parts.push(el.value);
+            });
+            const res=await fetch('/api/rcon',{
+                method:'POST',
+                headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken},
+                body:JSON.stringify({host,port,password,command:parts.join(' ')})
+            });
+            const out=await res.json();
+            document.getElementById('resp').textContent=JSON.stringify(out);
+            showToast(out.success?'Sent':'Error',!out.success);
         }
         async function loadServer(){
             const name=document.getElementById('server').value;
