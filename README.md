@@ -62,3 +62,7 @@ Alle Server-Profile werden in der Datei `servers.json` im gleichen Verzeichnis a
 - Datei-Editor auf `/files/edit/<path>`
 - Aufgabenplanung auf `/tasks`
 - Statistikseite unter `/stats`
+
+- Registrierung unter `/register`
+
+
