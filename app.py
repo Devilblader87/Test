@@ -27,6 +27,27 @@ scheduler = BackgroundScheduler()
 scheduler.start()
 
 
+# User storage in JSON file
+USERS_FILE = "users.json"
+
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        users = {"admin": {"password": generate_password_hash("admin"), "role": "admin"}}
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2)
+        return users
+    with open(USERS_FILE, encoding="utf-8") as f:
+        users = json.load(f)
+    if "admin" not in users:
+        users["admin"] = {"password": generate_password_hash("admin"), "role": "admin"}
+        save_users(users)
+    return users
+
+def save_users(users):
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=2)
+
+
 
 
 
@@ -34,26 +55,12 @@ scheduler.start()
 DB_FILE = 'app.db'
 
 def init_db():
-
-    """Create required tables and default admin user."""
+    """Ensure the command log table exists."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS command_log (ts REAL, user TEXT, command TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT)')
-    # ensure default admin account
-    c.execute('SELECT 1 FROM users WHERE username=?', ('admin',))
-    if c.fetchone() is None:
-        c.execute('INSERT INTO users VALUES (?, ?, ?)', (
-            'admin', generate_password_hash('admin'), 'admin'))
     conn.commit()
     conn.close()
-
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS command_log (ts REAL, user TEXT, command TEXT)")
-    conn.commit()
-    conn.close()
-    load_users()
 
 
 init_db()
@@ -107,7 +114,6 @@ def csrf_protect():
 app.jinja_env.globals['csrf_token'] = generate_csrf_token
 SERVER_FILE = 'servers.json'
 
-USERS_FILE = "users.json"
 # Load saved servers from JSON
 def load_servers():
     if os.path.exists(SERVER_FILE):
@@ -119,23 +125,6 @@ def load_servers():
 def save_servers(servers):
     with open(SERVER_FILE, 'w', encoding='utf-8') as f:
         json.dump(servers, f, indent=2)
-# User helpers backed by JSON
-def load_users():
-    if not os.path.exists(USERS_FILE):
-        users = {"admin": {"password": generate_password_hash("admin"), "role": "admin"}}
-        with open(USERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(users, f, indent=2)
-        return users
-    with open(USERS_FILE, encoding="utf-8") as f:
-        users = json.load(f)
-    if "admin" not in users:
-        users["admin"] = {"password": generate_password_hash("admin"), "role": "admin"}
-        save_users(users)
-    return users
-
-def save_users(users):
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=2)
 
 def save_user(username, password_hash, role):
     users = load_users()
@@ -146,29 +135,6 @@ def user_exists(username):
     users = load_users()
     return username in users
 
-# User helpers backed by SQLite
-def load_users():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('SELECT username, password, role FROM users')
-    users = {row[0]: {'password': row[1], 'role': row[2]} for row in c.fetchall()}
-    conn.close()
-    return users
-
-def save_user(username, password_hash, role):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('INSERT OR REPLACE INTO users VALUES (?,?,?)', (username, password_hash, role))
-    conn.commit()
-    conn.close()
-
-def user_exists(username):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute('SELECT 1 FROM users WHERE username=?', (username,))
-    exists = c.fetchone() is not None
-    conn.close()
-    return exists
 
 # Send RCON command
 def send_rcon(addr, port, password, command):
