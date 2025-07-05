@@ -506,10 +506,9 @@ def plugin_config(plugin):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute('SELECT password, role FROM users WHERE username=?', (username,))
@@ -519,21 +518,14 @@ def login():
             login_user(User(username, row[1]))
             identity_changed.send(app, identity=Identity(username))
             return redirect(url_for('index'))
-        return render_template('login.html', error='Invalid credentials')
-    return render_template('login.html')
-
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "").strip()
         users = load_users()
         info = users.get(username)
-        if info and check_password_hash(info["password"], password):
-            login_user(User(username, info.get("role", "read")))
+        if info and check_password_hash(info['password'], password):
+            login_user(User(username, info.get('role', 'read')))
             identity_changed.send(app, identity=Identity(username))
-            return redirect(url_for("index"))
-        flash("Invalid credentials")
-        return redirect(url_for("login"))
-    return render_template("login.html")
+            return redirect(url_for('index'))
+        flash('Invalid credentials')
+    return render_template('login.html')
 
 
 
@@ -549,11 +541,6 @@ def register():
         return redirect(url_for('login'))
     return render_template('register.html')
 
-
-
-
-
-2
 @app.route('/logout')
 def logout():
     logout_user()
