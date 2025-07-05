@@ -7,6 +7,9 @@
 </head>
 <body class="bg-gray-900 text-white p-6">
     <h1 class="text-2xl mb-4">Login</h1>
+
+    {% if error %}<div class="bg-red-600 p-2 mb-2">{{ error }}</div>{% endif %}
+
     {% if error %}
     <div class="bg-red-600 p-2 mb-2">{{ error }}</div>
     {% endif %}
@@ -17,6 +20,7 @@
         {% endfor %}
     {% endif %}
     {% endwith %}
+
     <form method="POST" class="space-y-2">
         <input name="username" placeholder="User" class="text-black p-1 rounded w-full" required>
         <input name="password" type="password" placeholder="Password" class="text-black p-1 rounded w-full" required>
@@ -24,6 +28,10 @@
     </form>
 
     <p class="mt-2">No account? <a href="/register" class="underline text-blue-400">Register here</a></p>
+
+
+    <p class="mt-2">No account? <a href="/register" class="underline text-blue-400">Register here</a></p>
+
 
 
 </body>

@@ -1,5 +1,11 @@
+
+from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for
+import socket, os, json, sqlite3, time
+from werkzeug.security import generate_password_hash, check_password_hash
+
 from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
+
 
 
 from functools import wraps
@@ -27,16 +33,34 @@ scheduler = BackgroundScheduler()
 scheduler.start()
 
 
+
+
+
 # SQLite database for logs and users
 DB_FILE = 'app.db'
 
 def init_db():
+
+    """Create required tables and default admin user."""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('CREATE TABLE IF NOT EXISTS command_log (ts REAL, user TEXT, command TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT, role TEXT)')
+    # ensure default admin account
+    c.execute('SELECT 1 FROM users WHERE username=?', ('admin',))
+    if c.fetchone() is None:
+        c.execute('INSERT INTO users VALUES (?, ?, ?)', (
+            'admin', generate_password_hash('admin'), 'admin'))
+    conn.commit()
+    conn.close()
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("CREATE TABLE IF NOT EXISTS command_log (ts REAL, user TEXT, command TEXT)")
     conn.commit()
     conn.close()
     load_users()
+
 
 init_db()
 
@@ -47,10 +71,20 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT role FROM users WHERE username=?', (user_id,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return User(user_id, row[0])
+
     users = load_users()
     info = users.get(user_id)
     if info:
         return User(user_id, info.get("role", "read"))
+
     return None
 
 def role_required(role):
@@ -117,6 +151,30 @@ def save_user(username, password_hash, role):
 def user_exists(username):
     users = load_users()
     return username in users
+
+# User helpers backed by SQLite
+def load_users():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT username, password, role FROM users')
+    users = {row[0]: {'password': row[1], 'role': row[2]} for row in c.fetchall()}
+    conn.close()
+    return users
+
+def save_user(username, password_hash, role):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('INSERT OR REPLACE INTO users VALUES (?,?,?)', (username, password_hash, role))
+    conn.commit()
+    conn.close()
+
+def user_exists(username):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('SELECT 1 FROM users WHERE username=?', (username,))
+    exists = c.fetchone() is not None
+    conn.close()
+    return exists
 
 # Send RCON command
 def send_rcon(addr, port, password, command):
@@ -488,6 +546,22 @@ def plugin_config(plugin):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute('SELECT password, role FROM users WHERE username=?', (username,))
+        row = c.fetchone()
+        conn.close()
+        if row and check_password_hash(row[0], password):
+            login_user(User(username, row[1]))
+            identity_changed.send(app, identity=Identity(username))
+            return redirect(url_for('index'))
+        return render_template('login.html', error='Invalid credentials')
+    return render_template('login.html')
+
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
@@ -500,6 +574,7 @@ def login():
         flash("Invalid credentials")
         return redirect(url_for("login"))
     return render_template("login.html")
+
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -516,6 +591,9 @@ def register():
 
 
 
+
+
+2
 @app.route('/logout')
 def logout():
     logout_user()
@@ -526,6 +604,7 @@ def logout():
 @login_required
 @role_required('admin')
 def manage_users():
+
 
     users = load_users()
     if request.method == 'POST':
@@ -607,6 +686,13 @@ def edit_file(fp):
 def tasks():
     if request.method == 'POST':
         host = request.form.get('host')
+
+        port = int(request.form.get('port','27015'))
+        password = request.form.get('password')
+        command = request.form.get('command')
+        run_at = float(request.form.get('run_at',0))
+    scheduler.add_job(lambda: send_rcon(host, port, password, command), 'date', run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at)))
+
         port = int(request.form.get('port', '27015'))
         password = request.form.get('password')
         command = request.form.get('command')
@@ -617,6 +703,7 @@ def tasks():
             run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at))
         )
         return render_template('tasks.html')
+
 
     return render_template('tasks.html')
 
