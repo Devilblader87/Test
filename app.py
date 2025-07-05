@@ -1,12 +1,6 @@
-
-from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for, flash
 import socket, os, json, sqlite3, time
 from werkzeug.security import generate_password_hash, check_password_hash
-
-from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for, flash
-from werkzeug.security import generate_password_hash, check_password_hash
-
-
 
 from functools import wraps
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -686,13 +680,6 @@ def edit_file(fp):
 def tasks():
     if request.method == 'POST':
         host = request.form.get('host')
-
-        port = int(request.form.get('port','27015'))
-        password = request.form.get('password')
-        command = request.form.get('command')
-        run_at = float(request.form.get('run_at',0))
-    scheduler.add_job(lambda: send_rcon(host, port, password, command), 'date', run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at)))
-
         port = int(request.form.get('port', '27015'))
         password = request.form.get('password')
         command = request.form.get('command')
@@ -702,8 +689,6 @@ def tasks():
             'date',
             run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at))
         )
-        return render_template('tasks.html')
-
 
     return render_template('tasks.html')
 
