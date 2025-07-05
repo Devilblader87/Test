@@ -607,11 +607,17 @@ def edit_file(fp):
 def tasks():
     if request.method == 'POST':
         host = request.form.get('host')
-        port = int(request.form.get('port','27015'))
+        port = int(request.form.get('port', '27015'))
         password = request.form.get('password')
         command = request.form.get('command')
-        run_at = float(request.form.get('run_at',0))
-    scheduler.add_job(lambda: send_rcon(host, port, password, command), 'date', run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at)))
+        run_at = float(request.form.get('run_at', 0))
+        scheduler.add_job(
+            lambda: send_rcon(host, port, password, command),
+            'date',
+            run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at))
+        )
+        return render_template('tasks.html')
+
     return render_template('tasks.html')
 
 @app.route('/stats')
