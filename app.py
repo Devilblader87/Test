@@ -1,6 +1,13 @@
+
 from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for
 import socket, os, json, sqlite3, time
 from werkzeug.security import generate_password_hash, check_password_hash
+
+from flask import Flask, render_template, request, jsonify, abort, session, redirect, url_for, flash
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+
 from functools import wraps
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_principal import Principal, Permission, RoleNeed, Identity, identity_loaded, identity_changed, AnonymousIdentity
@@ -25,10 +32,15 @@ principals = Principal(app)
 scheduler = BackgroundScheduler()
 scheduler.start()
 
+
+
+
+
 # SQLite database for logs and users
 DB_FILE = 'app.db'
 
 def init_db():
+
     """Create required tables and default admin user."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -42,6 +54,14 @@ def init_db():
     conn.commit()
     conn.close()
 
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS command_log (ts REAL, user TEXT, command TEXT)")
+    conn.commit()
+    conn.close()
+    load_users()
+
+
 init_db()
 
 class User(UserMixin):
@@ -51,6 +71,7 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('SELECT role FROM users WHERE username=?', (user_id,))
@@ -58,6 +79,12 @@ def load_user(user_id):
     conn.close()
     if row:
         return User(user_id, row[0])
+
+    users = load_users()
+    info = users.get(user_id)
+    if info:
+        return User(user_id, info.get("role", "read"))
+
     return None
 
 def role_required(role):
@@ -86,6 +113,7 @@ def csrf_protect():
 app.jinja_env.globals['csrf_token'] = generate_csrf_token
 SERVER_FILE = 'servers.json'
 
+USERS_FILE = "users.json"
 # Load saved servers from JSON
 def load_servers():
     if os.path.exists(SERVER_FILE):
@@ -97,6 +125,32 @@ def load_servers():
 def save_servers(servers):
     with open(SERVER_FILE, 'w', encoding='utf-8') as f:
         json.dump(servers, f, indent=2)
+# User helpers backed by JSON
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        users = {"admin": {"password": generate_password_hash("admin"), "role": "admin"}}
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2)
+        return users
+    with open(USERS_FILE, encoding="utf-8") as f:
+        users = json.load(f)
+    if "admin" not in users:
+        users["admin"] = {"password": generate_password_hash("admin"), "role": "admin"}
+        save_users(users)
+    return users
+
+def save_users(users):
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=2)
+
+def save_user(username, password_hash, role):
+    users = load_users()
+    users[username] = {"password": password_hash, "role": role}
+    save_users(users)
+
+def user_exists(username):
+    users = load_users()
+    return username in users
 
 # User helpers backed by SQLite
 def load_users():
@@ -492,6 +546,7 @@ def plugin_config(plugin):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -507,6 +562,21 @@ def login():
         return render_template('login.html', error='Invalid credentials')
     return render_template('login.html')
 
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        users = load_users()
+        info = users.get(username)
+        if info and check_password_hash(info["password"], password):
+            login_user(User(username, info.get("role", "read")))
+            identity_changed.send(app, identity=Identity(username))
+            return redirect(url_for("index"))
+        flash("Invalid credentials")
+        return redirect(url_for("login"))
+    return render_template("login.html")
+
+
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -519,6 +589,11 @@ def register():
         return redirect(url_for('login'))
     return render_template('register.html')
 
+
+
+
+
+2
 @app.route('/logout')
 def logout():
     logout_user()
@@ -529,6 +604,8 @@ def logout():
 @login_required
 @role_required('admin')
 def manage_users():
+
+
     users = load_users()
     if request.method == 'POST':
         uname = request.form.get('username')
@@ -540,6 +617,7 @@ def manage_users():
             users = load_users()
     users_list = [(u, info.get('role', 'read')) for u, info in users.items()]
     return render_template('users.html', users=users_list)
+
 
 @app.route('/roles')
 @login_required
@@ -608,11 +686,25 @@ def edit_file(fp):
 def tasks():
     if request.method == 'POST':
         host = request.form.get('host')
+
         port = int(request.form.get('port','27015'))
         password = request.form.get('password')
         command = request.form.get('command')
         run_at = float(request.form.get('run_at',0))
     scheduler.add_job(lambda: send_rcon(host, port, password, command), 'date', run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at)))
+
+        port = int(request.form.get('port', '27015'))
+        password = request.form.get('password')
+        command = request.form.get('command')
+        run_at = float(request.form.get('run_at', 0))
+        scheduler.add_job(
+            lambda: send_rcon(host, port, password, command),
+            'date',
+            run_date=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(run_at))
+        )
+        return render_template('tasks.html')
+
+
     return render_template('tasks.html')
 
 @app.route('/stats')
